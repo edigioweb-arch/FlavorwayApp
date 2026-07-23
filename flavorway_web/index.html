@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlavorWay | Livraison à Brazzaville & Pointe-Noire</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        flavorOrange: '#F36A2D', // Votre Orange
+                        flavorPurple: '#4B1F5C', // Votre Violet
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .hero-bg {
+            background: linear-gradient(135deg, #F36A2D 0%, #4B1F5C 100%);
+        }
+        .category-card:hover img { transform: scale(1.1); transition: 0.3s; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans">
+
+    <!-- NAVIGATION -->
+    <nav class="bg-white py-4 px-6 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <div class="w-10 h-10 bg-flavorOrange rounded-full flex items-center justify-center shadow-md">
+                    <i class="fas fa-utensils text-white"></i>
+                </div>
+                <span class="text-2xl font-bold text-flavorPurple italic">FlavorWay</span>
+            </div>
+            <div class="flex items-center gap-4">
+                <button class="text-flavorPurple font-bold hover:text-flavorOrange transition">Connexion</button>
+                <button class="bg-flavorPurple text-white px-6 py-2 rounded-full font-bold hover:bg-opacity-90 transition shadow-lg">
+                    S'inscrire
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- HERO SECTION (Localisée Congo) -->
+    <header class="hero-bg py-24 px-6 text-center text-white">
+        <div class="max-w-4xl mx-auto">
+            <h1 class="text-5xl md:text-7xl font-black mb-6 tracking-tight">
+                Le goût du Congo livré <br><span class="text-yellow-300 underline">chez vous.</span>
+            </h1>
+            <p class="text-xl mb-12 opacity-90">Commandez dans les meilleurs restaurants de Brazzaville et Pointe-Noire.</p>
+            
+            <!-- Barre de recherche Glovo Style -->
+            <div class="bg-white p-2 rounded-full shadow-2xl flex flex-col md:flex-row items-center max-w-2xl mx-auto border-4 border-flavorOrange">
+                <div class="flex items-center flex-1 px-6 w-full py-3">
+                    <i class="fas fa-map-marker-alt text-flavorOrange text-xl mr-3"></i>
+                    <input type="text" placeholder="Quelle est votre adresse à Brazzaville ?" 
+                           class="w-full outline-none text-gray-800 text-lg">
+                </div>
+                <button class="bg-flavorOrange text-white px-10 py-4 rounded-full font-black text-lg w-full md:w-auto hover:scale-105 transition shadow-lg">
+                    VOIR LES RESTOS
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- CATEGORIES (Cercles Glovo) -->
+    <section class="max-w-7xl mx-auto py-20 px-6">
+        <div class="flex flex-wrap justify-center gap-12 md:gap-20">
+            <!-- Catégorie 1 -->
+            <div class="category-card flex flex-col items-center cursor-pointer group">
+                <div class="w-44 h-44 bg-orange-100 rounded-full flex items-center justify-center mb-4 shadow-inner group-hover:shadow-xl transition">
+                    <img src="https://cdn-icons-png.flaticon.com/512/3081/3081986.png" class="w-24">
+                </div>
+                <span class="text-2xl font-bold text-flavorPurple">Restaurants</span>
+            </div>
+            <!-- Catégorie 2 -->
+            <div class="category-card flex flex-col items-center cursor-pointer group">
+                <div class="w-44 h-44 bg-purple-100 rounded-full flex items-center justify-center mb-4 shadow-inner group-hover:shadow-xl transition">
+                    <img src="https://cdn-icons-png.flaticon.com/512/3081/3081928.png" class="w-24">
+                </div>
+                <span class="text-2xl font-bold text-flavorPurple">Courses</span>
+            </div>
+            <!-- Catégorie 3 -->
+            <div class="category-card flex flex-col items-center cursor-pointer group">
+                <div class="w-44 h-44 bg-orange-100 rounded-full flex items-center justify-center mb-4 shadow-inner group-hover:shadow-xl transition">
+                    <img src="https://cdn-icons-png.flaticon.com/512/2966/2966327.png" class="w-24">
+                </div>
+                <span class="text-2xl font-bold text-flavorPurple">Pharmacie</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- VILLES POPULAIRES (Congo Brazzaville) -->
+    <section class="bg-white py-20 px-6">
+        <div class="max-w-7xl mx-auto">
+            <h2 class="text-4xl font-black text-flavorPurple mb-12 text-center italic">
+                Déjà présent au <span class="text-flavorOrange">Congo</span>
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div class="p-8 border-2 border-gray-100 rounded-3xl hover:border-flavorOrange transition cursor-pointer text-center">
+                    <h3 class="text-2xl font-bold text-flavorPurple">Brazzaville</h3>
+                    <p class="text-gray-500 mt-2">Capitale</p>
+                </div>
+                <div class="p-8 border-2 border-gray-100 rounded-3xl hover:border-flavorOrange transition cursor-pointer text-center">
+                    <h3 class="text-2xl font-bold text-flavorPurple">Pointe-Noire</h3>
+                    <p class="text-gray-500 mt-2">La côte</p>
+                </div>
+                <div class="p-8 border-2 border-gray-100 rounded-3xl hover:border-flavorOrange transition cursor-pointer text-center">
+                    <h3 class="text-2xl font-bold text-flavorPurple">Dolisie</h3>
+                    <p class="text-gray-500 mt-2">Le Grand Niari</p>
+                </div>
+                <div class="p-8 border-2 border-gray-100 rounded-3xl hover:border-flavorOrange transition cursor-pointer text-center">
+                    <h3 class="text-2xl font-bold text-flavorPurple">Nkayi</h3>
+                    <p class="text-gray-500 mt-2">Bouenza</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="bg-flavorPurple text-white py-20 px-6">
+        <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
+            <div>
+                <span class="text-3xl font-black italic">FlavorWay</span>
+                <p class="mt-4 opacity-70">La plateforme de livraison n°1 au Congo Brazzaville.</p>
+            </div>
+            <div>
+                <h4 class="font-bold text-xl mb-6">Liens Utiles</h4>
+                <ul class="space-y-4 opacity-80">
+                    <li>À propos</li>
+                    <li>Devenir Partenaire</li>
+                    <li>Coursiers</li>
+                </li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="font-bold text-xl mb-6">Suivez-nous</h4>
+                <div class="flex gap-4 text-2xl">
+                    <i class="fab fa-facebook"></i>
+                    <i class="fab fa-instagram"></i>
+                    <i class="fab fa-whatsapp text-green-400"></i>
+                </div>
+            </div>
+            <div>
+                <h4 class="font-bold text-xl mb-6">Apps</h4>
+                <button class="bg-black text-white px-6 py-3 rounded-lg flex items-center gap-3 w-full mb-3">
+                    <i class="fab fa-apple text-2xl"></i> App Store
+                </button>
+                <button class="bg-black text-white px-6 py-3 rounded-lg flex items-center gap-3 w-full">
+                    <i class="fab fa-google-play text-2xl"></i> Google Play
+                </button>
+            </div>
+        </div>
+    </footer>
+
+</body>
+</html>

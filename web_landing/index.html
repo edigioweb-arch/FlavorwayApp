@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FlavorWay - Le goût du Congo livré chez vous</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Poppins', sans-serif; }
+    .gradient-orange { background: linear-gradient(135deg, #F36A2D 0%, #E85D1C 100%); }
+    .btn-violet { background-color: #4B1F5C; }
+    .btn-violet:hover { background-color: #3a153e; }
+    .logo-pin { position: relative; }
+    .logo-fork { position: absolute; top: 20%; left: 50%; transform: translateX(-50%); color: white; font-size: 2.5rem; }
+  </style>
+</head>
+<body class="bg-white overflow-x-hidden">
+  <!-- NAVIGATION -->
+  <nav class="px-20 py-5 flex items-center justify-between">
+    <!-- Logo -->
+    <div class="flex items-center">
+      <div class="logo-pin w-12 h-12 bg-gradient-to-br from-orange-500 to-purple-600 rounded-full relative mr-3 shadow-2xl">
+        <i class="fas fa-map-pin logo-fork"></i>
+      </div>
+      <h1 class="text-3xl font-bold text-purple-800 italic">FlavorWay</h1>
+    </div>
+    
+    <!-- Boutons -->
+    <div class="flex items-center space-x-5">
+      <button class="text-purple-800 font-bold px-6 py-3 hover:text-purple-600">Connexion</button>
+      <button class="btn-violet text-white font-bold px-12 py-6 rounded-full shadow-2xl hover:shadow-3xl transition-all duration-300">
+        S'INSCRIRE
+      </button>
+    </div>
+  </nav>
+
+  <!-- HERO SECTION -->
+  <section class="gradient-orange py-24 px-20 text-center text-white">
+    <h1 class="text-6xl font-black mb-4 leading-tight">
+      Le goût du Congo<br>livré chez vous
+    </h1>
+    <p class="text-2xl font-light mb-12 max-w-2xl mx-auto leading-relaxed">
+      Commandez dans les meilleurs restaurants de <strong>Brazzaville</strong> et <strong>Pointe-Noire</strong>
+    </p>
+    
+    <!-- Barre de recherche bulle -->
+    <div class="max-w-4xl mx-auto mb-20">
+      <div class="bg-white rounded-3xl p-4 shadow-2xl flex items-center max-w-4xl mx-auto">
+        <div class="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center ml-4 mr-4">
+          <i class="fas fa-search text-2xl text-gray-500"></i>
+        </div>
+        <input type="text" placeholder="Une adresse de livraison à Brazzaville ?" 
+          class="flex-1 p-6 border-none outline-none text-xl rounded-3xl bg-transparent">
+        <button class="btn-violet text-white font-bold px-16 py-8 rounded-full ml-4 shadow-2xl hover:shadow-3xl transition-all duration-300 whitespace-nowrap">
+          VOIR LES RESTOS
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- CATÉGORIES CIRCULAIRES -->
+  <section class="py-24 px-20">
+    <h2 class="text-4xl font-bold text-center mb-24 text-purple-800">Nos services</h2>
+    <div class="grid grid-cols-4 gap-16 max-w-6xl mx-auto">
+      <div class="text-center group cursor-pointer transform hover:-translate-y-4 transition-all duration-500">
+        <div class="w-40 h-40 bg-orange-100 border-4 border-orange-400 rounded-full mx-auto mb-6 group-hover:bg-orange-200 flex items-center justify-center">
+          <i class="fas fa-utensils text-4xl text-orange-500 group-hover:text-orange-600"></i>
+        </div>
+        <h3 class="text-2xl font-bold text-purple-800 mb-2">Restaurants</h3>
+      </div>
+      <div class="text-center group cursor-pointer transform hover:-translate-y-4 transition-all duration-500">
+        <div class="w-40 h-40 bg-purple-100 border-4 border-purple-400 rounded-full mx-auto mb-6 group-hover:bg-purple-200 flex items-center justify-center">
+          <i class="fas fa-shopping-cart text-4xl text-purple-500 group-hover:text-purple-600"></i>
+        </div>
+        <h3 class="text-2xl font-bold text-purple-800 mb-2">Courses</h3>
+      </div>
+      <div class="text-center group cursor-pointer transform hover:-translate-y-4 transition-all duration-500">
+        <div class="w-40 h-40 bg-orange-100 border-4 border-orange-400 rounded-full mx-auto mb-6 group-hover:bg-orange-200 flex items-center justify-center">
+          <i class="fas fa-pills text-4xl text-orange-500 group-hover:text-orange-600"></i>
+        </div>
+        <h3 class="text-2xl font-bold text-purple-800 mb-2">Pharmacie</h3>
+      </div>
+      <div class="text-center group cursor-pointer transform hover:-translate-y-4 transition-all duration-500">
+        <div class="w-40 h-40 bg-purple-100 border-4 border-purple-400 rounded-full mx-auto mb-6 group-hover:bg-purple-200 flex items-center justify-center">
+          <i class="fas fa-boxes text-4xl text-purple-500 group-hover:text-purple-600"></i>
+        </div>
+        <index.html> <h3 class="text-2xl font-bold text-purple-800 mb-2">Colis</h3>
+      </div>
+    </div>
+  </section>
+
+  <!-- VILLES -->
+  <section class="bg-gray-50 py-24 px-20">
+    <h2 class="text-5xl font-bold text-center mb-16 text-purple-800">Nos villes</h2>
+    <div class="flex justify-center gap-8">
+      <div class="bg-white p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 cursor-pointer text-center min-w-[200px]">
+        <i class="fas fa-map-marker-alt text-4xl text-orange-500 mb-4"></i>
+        <h3 class="text-2xl font-bold text-orange-500 mb-2">Brazzaville</h3>
+        <p class="text-gray-600">Livraison en 30 min</p>
+      </div>
+      <div class="bg-white p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 cursor-pointer text-center min-w-[200px]">
+        <i class="fas fa-map-marker-alt text-4xl text-orange-500 mb-4"></i>
+        <h3 class="text-2xl font-bold text-orange-500 mb-2">Pointe-Noire</h3>
+        <p class="text-gray-600">Livraison en 30 min</p>
+      </div>
+      <div class="bg-white p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 cursor-pointer text-center min-w-[200px]">
+        <i class="fas fa-map-marker-alt text-4xl text-orange-500 mb-4"></i>
+        <h3 class="text-2xl font-bold text-orange-500 mb-2">Dolisie</h3>
+        <p class="text-gray-600">Livraison en 30 min</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="bg-purple-800 py-20 px-20 text-white">
+    <div class="flex justify-between items-center max-w-6xl mx-auto">
+      <div>
+        <h3 class="text-2xl font-bold mb-4">FlavorWay</h3>
+        <p class="text-white/70">© 2024 FlavorWay Congo. Tous droits réservés.</p>
+      </div>
+      <div class="flex space-x-8">
+        <i class="fab fa-facebook text-xl hover:text-orange-400 cursor-pointer transition-colors"></i>
+        <i class="fab fa-instagram text-xl hover:text-orange-400 cursor-pointer transition-colors"></i>
+        <i class="fab fa-whatsapp text-xl hover:text-orange-400 cursor-pointer transition-colors"></i>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Font Awesome -->
+  <script src="https://kit.fontawesome.com/your-kit-id.js" crossorigin="anonymous"></script>
+</body>
+</html>
