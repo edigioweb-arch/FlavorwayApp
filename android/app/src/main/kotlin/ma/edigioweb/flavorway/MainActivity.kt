@@ -1,4 +1,4 @@
-package com.example.mon_app
+package ma.edigioweb.flavorway
 
 import io.flutter.embedding.android.FlutterActivity
 

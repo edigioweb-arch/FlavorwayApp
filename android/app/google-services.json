@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "362183263895",
+    "project_id": "flavorway",
+    "storage_bucket": "flavorway.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:362183263895:android:4edc8dca9279b5676e8bd2",
+        "android_client_info": {
+          "package_name": "com.example.mon_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB92RX2ob1MPv5wG0vpFMxJieHJSh_xFz0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:362183263895:android:539926a54362938f6e8bd2",
+        "android_client_info": {
+          "package_name": "ma.edigioweb.flavorway"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB92RX2ob1MPv5wG0vpFMxJieHJSh_xFz0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
