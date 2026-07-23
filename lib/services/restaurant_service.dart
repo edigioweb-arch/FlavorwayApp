@@ -380,8 +380,8 @@ class RestaurantService extends ChangeNotifier {
         rating: 'Nouveau',
         preparationTime: '20-35 min',
         distance: address,
-        coverImage: 'assets/images/restaurants/default_cover.png',
-        menuImage: 'assets/images/restaurants/default_menu.png',
+        coverImage: 'assets/images/offer.png',
+        menuImage: 'assets/images/offer.png',
         galleryImages: [],
         services: [
           'Sur place',
@@ -414,12 +414,12 @@ class RestaurantService extends ChangeNotifier {
       preparationTime: '15-30 min',
       distance: 'Brazzaville',
       coverImage: 'assets/images/restaurants/joli_coin/cover.png',
-      menuImage: 'assets/images/restaurants/joli_coin/article.png',
+      menuImage: 'assets/images/restaurants/joli_coin/article.jpeg',
       galleryImages: [
         'assets/images/restaurants/joli_coin/cover.png',
         'assets/images/restaurants/joli_coin/gallery_1.png',
         'assets/images/restaurants/joli_coin/gallery_2.png',
-        'assets/images/restaurants/joli_coin/article.png',
+        'assets/images/restaurants/joli_coin/article.jpeg',
       ],
       services: [
         'Réservation',

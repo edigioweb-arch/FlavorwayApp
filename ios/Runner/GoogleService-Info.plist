@@ -9,7 +9,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.example.monApp</string>
+	<string>ma.edigioweb.flavorway</string>
 	<key>PROJECT_ID</key>
 	<string>flavorway</string>
 	<key>STORAGE_BUCKET</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:362183263895:ios:8ffdf7af70c270dc6e8bd2</string>
+	<string>1:362183263895:ios:0726c9d05d8d53d36e8bd2</string>
 </dict>
 </plist>

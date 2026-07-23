@@ -59,11 +59,11 @@ class DefaultFirebaseOptions {
   );
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDs-zOO80FhkcGeL06swOUIvGULq7mvexg',
-    appId: '1:362183263895:ios:8ffdf7af70c270dc6e8bd2',
+    appId: '1:362183263895:ios:0726c9d05d8d53d36e8bd2',
     messagingSenderId: '362183263895',
     projectId: 'flavorway',
     storageBucket: 'flavorway.firebasestorage.app',
-    iosBundleId: 'com.example.monApp',
+    iosBundleId: 'ma.edigioweb.flavorway',
   );
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyDs-zOO80FhkcGeL06swOUIvGULq7mvexg',

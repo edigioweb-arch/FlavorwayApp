@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'services/cart_service.dart';
 import 'services/restaurant_service.dart';
 import 'services/message_service.dart';
@@ -27,7 +29,13 @@ import 'screens/restaurant_owner/edit_restaurant_screen.dart';
 import 'screens/reservations_screen.dart';
 import 'screens/restaurant_owner/edit_gallery_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   runApp(
     MultiProvider(
       providers: [
@@ -82,7 +90,8 @@ class FlavorWayApp extends StatelessWidget {
             '/chat': (context) => const ChatScreen(
                   conversationId: 'restaurant_joli_coin',
                 ),
-            '/restaurant-owner-login': (context) => RestaurantOwnerLoginScreen(),
+            '/restaurant-owner-login': (context) =>
+                RestaurantOwnerLoginScreen(),
             '/messages': (context) => const MessagesScreen(),
             '/notifications': (context) => const NotificationsScreen(),
             '/reservations': (context) => const ReservationsScreen(),

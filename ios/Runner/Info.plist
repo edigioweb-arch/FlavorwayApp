@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>FLAVORWAY APPS</string>
+	<string>Flavorway</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>mon_app</string>
+	<string>Flavorway</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -66,6 +66,10 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>FlavorWay utilise la caméra pour prendre des photos de profil et envoyer des images.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>FlavorWay utilise votre galerie pour choisir des images de profil et les partager.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>FlavorWay utilise votre position pour remplir automatiquement votre adresse de livraison.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
