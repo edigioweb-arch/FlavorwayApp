@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -27,6 +29,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   bool _acceptTerms = false;
   bool _isObscure = true;
+  bool _isLoading = false;
   String? _selectedCountry;
   String? _usernameError;
 
@@ -65,40 +68,214 @@ class _SignUpScreenState extends State<SignUpScreen> {
   // --- LOGIQUE ---
 
   bool _isStepValid() {
-    // MODE TEST ADMIN TEMPORAIRE : on débloque les étapes pour avancer vite.
-    // À supprimer avant production pour remettre les validations complètes.
-    if (_userRole != null) return true;
+    if (_userRole == null) return false;
 
-    return false;
+    if (_userRole == 'client') {
+      if (_currentStep == 0) {
+        return _fullNameController.text.trim().isNotEmpty &&
+            _usernameController.text.trim().isNotEmpty &&
+            _usernameError == null &&
+            _emailController.text.trim().contains('@') &&
+            _passController.text.length >= 6;
+      }
+
+      return _selectedCountry != null &&
+          _cityController.text.trim().isNotEmpty &&
+          _addressController.text.trim().isNotEmpty &&
+          _acceptTerms;
+    }
+
+    if (_currentStep == 0) {
+      return _fullNameController.text.trim().isNotEmpty &&
+          _phoneController.text.trim().isNotEmpty &&
+          _emailController.text.trim().contains('@');
+    }
+
+    if (_currentStep == 1) {
+      return _resNameController.text.trim().isNotEmpty &&
+          _cuisineTypeController.text.trim().isNotEmpty &&
+          _licenseController.text.trim().isNotEmpty;
+    }
+
+    return _selectedCountry != null &&
+        _cityController.text.trim().isNotEmpty &&
+        _addressController.text.trim().isNotEmpty &&
+        _passController.text.length >= 6 &&
+        _acceptTerms;
   }
 
-  void _goNext() {
+  Future<void> _goNext() async {
+    if (_isLoading || !_isStepValid()) return;
+
     final bool isLast = (_userRole == 'client' && _currentStep == 1) ||
         (_userRole == 'restaurant' && _currentStep == 2);
+
     if (!isLast) {
-      _pageController.nextPage(
-          duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
-      setState(() => _currentStep++);
-    } else {
-      if (_userRole == 'restaurant') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Compte restaurateur créé. Connectez-vous à votre espace.'),
-          ),
+      await _pageController.nextPage(
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOut,
+      );
+
+      if (mounted) {
+        setState(() => _currentStep++);
+      }
+
+      return;
+    }
+
+    await _createAccount();
+  }
+
+  Future<void> _createAccount() async {
+    if (_isLoading) return;
+
+    setState(() => _isLoading = true);
+
+    User? createdUser;
+
+    try {
+      final UserCredential credential =
+          await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passController.text,
+      );
+
+      createdUser = credential.user;
+
+      if (createdUser == null) {
+        throw FirebaseAuthException(
+          code: 'user-not-created',
+          message: 'La création du compte a échoué.',
         );
-        Navigator.pushReplacementNamed(context, '/restaurant-owner-login');
-        return;
+      }
+
+      await createdUser.updateDisplayName(
+        _fullNameController.text.trim(),
+      );
+
+      final Map<String, dynamic> userData = {
+        'uid': createdUser.uid,
+        'fullName': _fullNameController.text.trim(),
+        'email': _emailController.text.trim().toLowerCase(),
+        'phone': _phoneController.text.trim(),
+        'role': _userRole,
+        'country': _selectedCountry,
+        'city': _cityController.text.trim(),
+        'address': _addressController.text.trim(),
+        'status': _userRole == 'restaurant' ? 'pending' : 'active',
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (_userRole == 'client') {
+        userData['username'] = _usernameController.text.trim().toLowerCase();
+      }
+
+      if (_userRole == 'restaurant') {
+        userData.addAll({
+          'restaurantName': _resNameController.text.trim(),
+          'cuisineType': _cuisineTypeController.text.trim(),
+          'licenseNumber': _licenseController.text.trim(),
+        });
+      }
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(createdUser.uid)
+          .set(userData);
+
+      if (!mounted) return;
+
+      final bool isRestaurant = _userRole == 'restaurant';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isRestaurant
+                ? 'Compte restaurateur créé. Il est en attente de validation.'
+                : 'Compte client créé avec succès.',
+          ),
+        ),
+      );
+
+      Navigator.pushReplacementNamed(
+        context,
+        isRestaurant ? '/restaurant-owner-login' : '/login',
+      );
+    } on FirebaseAuthException catch (error) {
+      if (!mounted) return;
+
+      String message = 'Impossible de créer le compte.';
+
+      switch (error.code) {
+        case 'email-already-in-use':
+          message = 'Cette adresse e-mail est déjà utilisée.';
+          break;
+
+        case 'invalid-email':
+          message = 'L’adresse e-mail n’est pas valide.';
+          break;
+
+        case 'weak-password':
+          message = 'Le mot de passe doit contenir au moins 6 caractères.';
+          break;
+
+        case 'network-request-failed':
+          message = 'Vérifiez votre connexion Internet puis réessayez.';
+          break;
+
+        default:
+          if (error.message != null && error.message!.isNotEmpty) {
+            message = error.message!;
+          }
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Compte client créé avec succès.')),
+        SnackBar(content: Text(message)),
       );
-      Navigator.pushReplacementNamed(context, '/login');
+    } on FirebaseException catch (error) {
+      if (createdUser != null) {
+        try {
+          await createdUser.delete();
+        } catch (_) {}
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.message ??
+                'Le profil n’a pas pu être enregistré dans Firestore.',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (createdUser != null) {
+        try {
+          await createdUser.delete();
+        } catch (_) {}
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Une erreur inattendue est survenue.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   void _goBack(BuildContext context) {
+    if (_isLoading) return;
+
     if (_userRole != null && _currentStep == 0) {
       setState(() => _userRole = null);
     } else if (_currentStep > 0) {
@@ -203,19 +380,32 @@ class _SignUpScreenState extends State<SignUpScreen> {
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(90)),
         ),
-        onPressed: _isStepValid() ? _goNext : null,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(isLast ? "Créer un compte" : "Suivant",
-                style: GoogleFonts.poppins(
-                    fontSize: 16, fontWeight: FontWeight.bold)),
-            if (!isLast) ...[
-              const SizedBox(width: 8),
-              const Icon(Icons.arrow_forward, size: 18)
-            ],
-          ],
-        ),
+        onPressed: _isLoading || !_isStepValid() ? null : _goNext,
+        child: _isLoading
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    isLast ? "Créer un compte" : "Suivant",
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  if (!isLast) ...[
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward, size: 18),
+                  ],
+                ],
+              ),
       ),
     );
   }
@@ -596,7 +786,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   Widget _buildFooterLogin() {
     return GestureDetector(
-        onTap: () => Navigator.pop(context),
+        onTap: _isLoading ? null : () => Navigator.pop(context),
         child: RichText(
             text: TextSpan(
                 text: "Déjà un compte ? ",

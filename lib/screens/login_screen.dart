@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../services/user_auth_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -150,7 +150,7 @@ class _LoginScreenState extends State<LoginScreen> {
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
         ),
-        onPressed: () {
+        onPressed: () async {
           final email = _emailController.text.trim();
           final password = _passwordController.text.trim();
 
@@ -163,23 +163,51 @@ class _LoginScreenState extends State<LoginScreen> {
             return;
           }
 
-          if (UserAuthService.instance.login(
-            email: email,
-            password: password,
-          )) {
+          try {
+            await FirebaseAuth.instance.signInWithEmailAndPassword(
+              email: email,
+              password: password,
+            );
+
+            if (!mounted) return;
+
             Navigator.pushNamedAndRemoveUntil(
               context,
               '/home',
               (route) => false,
             );
-            return;
-          }
+          } on FirebaseAuthException catch (e) {
+            String message = "Impossible de se connecter.";
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Identifiants incorrects'),
-            ),
-          );
+            switch (e.code) {
+              case 'invalid-email':
+                message = "Adresse email invalide.";
+                break;
+              case 'user-not-found':
+              case 'wrong-password':
+              case 'invalid-credential':
+                message = "Email ou mot de passe incorrect.";
+                break;
+              case 'network-request-failed':
+                message = "Vérifiez votre connexion Internet.";
+                break;
+              case 'too-many-requests':
+                message = "Trop de tentatives. Réessayez plus tard.";
+                break;
+              default:
+                if (e.message != null) {
+                  message = e.message!;
+                }
+            }
+
+            if (!mounted) return;
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(message),
+              ),
+            );
+          }
         },
         child: const Text('Se connecter',
             style: TextStyle(

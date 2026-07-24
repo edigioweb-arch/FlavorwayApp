@@ -2,12 +2,25 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 const Color orangeFlavor = Color(0xFFF36A2D);
 const Color violetFlavor = Color(0xFF4B1F5C);
 
 class EditProfileScreen extends StatefulWidget {
-  const EditProfileScreen({super.key});
+  final String currentName;
+  final String currentEmail;
+  final String currentPhone;
+  final String? currentPhotoUrl;
+
+  const EditProfileScreen({
+    super.key,
+    required this.currentName,
+    required this.currentEmail,
+    required this.currentPhone,
+    this.currentPhotoUrl,
+  });
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -15,11 +28,20 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController(text: 'Cynthia Kaussa');
-  final _emailController = TextEditingController(text: 'cynthia@email.com');
-  final _phoneController = TextEditingController(text: '+242 06 00 00 00');
+  late final TextEditingController _nameController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _phoneController;
   File? _profileImage;
   bool _hasChanges = false;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.currentName);
+    _emailController = TextEditingController(text: widget.currentEmail);
+    _phoneController = TextEditingController(text: widget.currentPhone);
+  }
 
   void _markChanged() {
     if (!_hasChanges) {
@@ -66,7 +88,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ListTile(
                   leading: const CircleAvatar(
                     backgroundColor: orangeFlavor,
-                    child: Icon(Icons.photo_library_outlined, color: Colors.white),
+                    child:
+                        Icon(Icons.photo_library_outlined, color: Colors.white),
                   ),
                   title: const Text('Choisir depuis la galerie'),
                   onTap: () async {
@@ -77,7 +100,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ListTile(
                   leading: const CircleAvatar(
                     backgroundColor: violetFlavor,
-                    child: Icon(Icons.photo_camera_outlined, color: Colors.white),
+                    child:
+                        Icon(Icons.photo_camera_outlined, color: Colors.white),
                   ),
                   title: const Text('Prendre une photo'),
                   onTap: () async {
@@ -154,8 +178,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       child: CircleAvatar(
                         radius: 60,
                         backgroundColor: orangeFlavor.withOpacity(0.1),
-                        backgroundImage:
-                            _profileImage != null ? FileImage(_profileImage!) : null,
+                        backgroundImage: _profileImage != null
+                            ? FileImage(_profileImage!)
+                            : null,
                         child: _profileImage == null
                             ? const Icon(
                                 Icons.person,
@@ -194,7 +219,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               if (_hasChanges) ...[
                 const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                   decoration: BoxDecoration(
                     color: orangeFlavor.withOpacity(0.10),
                     borderRadius: BorderRadius.circular(99),
@@ -259,26 +285,87 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      final updatedProfile = {
-                        'name': _nameController.text.trim(),
-                        'email': _emailController.text.trim(),
-                        'phone': _phoneController.text.trim(),
-                        'imagePath': _profileImage?.path,
-                      };
+                  onPressed: _isSaving
+                      ? null
+                      : () async {
+                          if (!_formKey.currentState!.validate()) return;
 
-                      Navigator.pop(context, updatedProfile);
-                    }
-                  },
+                          setState(() => _isSaving = true);
+
+                          try {
+                            final user = FirebaseAuth.instance.currentUser;
+                            if (user == null) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Utilisateur non connecté'),
+                                  ),
+                                );
+                              }
+                              return;
+                            }
+
+                            final data = <String, dynamic>{
+                              'fullName': _nameController.text.trim(),
+                              'prenom':
+                                  _nameController.text.trim().split(' ').first,
+                              'nom': _nameController.text
+                                          .trim()
+                                          .split(' ')
+                                          .length >
+                                      1
+                                  ? _nameController.text
+                                      .trim()
+                                      .split(' ')
+                                      .skip(1)
+                                      .join(' ')
+                                  : '',
+                              'email': _emailController.text.trim(),
+                              'phone': _phoneController.text.trim(),
+                              'telephone': _phoneController.text.trim(),
+                              'updatedAt': FieldValue.serverTimestamp(),
+                            };
+
+                            await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(user.uid)
+                                .set(data, SetOptions(merge: true));
+
+                            if (mounted) {
+                              Navigator.pop(context, true);
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Erreur : ${e.toString()}'),
+                                ),
+                              );
+                              setState(() => _isSaving = false);
+                            }
+                          }
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: orangeFlavor,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16)),
                   ),
-                  child: Text(_hasChanges ? 'Enregistrer les modifications' : 'Enregistrer',
-                      style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.bold, color: Colors.white)),
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : Text(
+                          _hasChanges
+                              ? 'Enregistrer les modifications'
+                              : 'Enregistrer',
+                          style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white)),
                 ),
               ),
             ],

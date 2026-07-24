@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'edit_profile_screen.dart';
 import 'payment_methods_screen.dart';
 import 'home_screen.dart';
 import 'addresses_screen.dart';
 import 'chat_screen.dart';
 import '../services/locale_service.dart';
-import '../services/user_auth_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -17,26 +18,95 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String userName = 'Cynthia Kaussa';
-  String userEmail = 'cynthia@email.com';
-  String userPhone = '+242 06 00 00 00';
-  String? profileImagePath;
+  User? _user;
+  DocumentSnapshot? _userDoc;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+      return;
+    }
+
+    _user = user;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      if (mounted) {
+        setState(() {
+          _userDoc = doc;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  String _getField(String key, {String fallback = 'Non renseigné'}) {
+    final data = _userDoc?.data() as Map<String, dynamic>?;
+    final value = data?[key];
+    if (value == null || (value is String && value.trim().isEmpty)) {
+      return fallback;
+    }
+    return value.toString();
+  }
+
+  String get _displayName {
+    final fullName = _getField('fullName', fallback: '');
+    if (fullName.isNotEmpty) return fullName;
+    final first = _getField('prenom', fallback: '');
+    final last = _getField('nom', fallback: '');
+    if (first.isNotEmpty && last.isNotEmpty) return '$first $last';
+    if (first.isNotEmpty) return first;
+    if (last.isNotEmpty) return last;
+    return _user?.displayName ?? 'Non renseigné';
+  }
+
+  String get _email =>
+      _user?.email ?? _getField('email', fallback: 'Non renseigné');
+  String get _phone {
+    final phone = _getField('phone', fallback: '');
+    if (phone.isNotEmpty) return phone;
+    return _getField('telephone', fallback: 'Non renseigné');
+  }
+
+  String? get _photoUrl {
+    final photo = _getField('photo', fallback: '');
+    if (photo.isNotEmpty) return photo;
+    return _user?.photoURL;
+  }
 
   Future<void> _openEditProfile() async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => const EditProfileScreen(),
+        builder: (context) => EditProfileScreen(
+          currentName: _displayName,
+          currentEmail: _email,
+          currentPhone: _phone,
+          currentPhotoUrl: _photoUrl,
+        ),
       ),
     );
 
-    if (result is Map) {
-      setState(() {
-        userName = result['name'] ?? userName;
-        userEmail = result['email'] ?? userEmail;
-        userPhone = result['phone'] ?? userPhone;
-        profileImagePath = result['imagePath'];
-      });
+    if (result == true) {
+      // Recharger le profil après modification
+      _loadUserProfile();
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -67,139 +137,146 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     top: Radius.circular(32),
                   ),
                 ),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 30),
-                  child: Column(
-                    children: [
-                      _buildUserCard(),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('Mon compte'),
-                      const SizedBox(height: 12),
-                      _buildMenuCard(
-                        children: [
-                          _buildMenuTile(
-                            icon: Icons.person_outline,
-                            title: 'Informations personnelles',
-                            subtitle: 'Nom, e-mail, téléphone',
-                            onTap: _openEditProfile,
-                          ),
-                          _divider(),
-                          _buildMenuTile(
-                            icon: Icons.location_on_outlined,
-                            title: 'Mes adresses',
-                            subtitle: 'Maison, bureau, autres',
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const AddressesScreen(),
+                child: _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          color: orangeFlavor,
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 30),
+                        child: Column(
+                          children: [
+                            _buildUserCard(),
+                            const SizedBox(height: 24),
+                            _buildSectionTitle('Mon compte'),
+                            const SizedBox(height: 12),
+                            _buildMenuCard(
+                              children: [
+                                _buildMenuTile(
+                                  icon: Icons.person_outline,
+                                  title: 'Informations personnelles',
+                                  subtitle: 'Nom, e-mail, téléphone',
+                                  onTap: _openEditProfile,
+                                ),
+                                _divider(),
+                                _buildMenuTile(
+                                  icon: Icons.location_on_outlined,
+                                  title: 'Mes adresses',
+                                  subtitle: 'Maison, bureau, autres',
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const AddressesScreen(),
+                                    ),
+                                  ),
+                                ),
+                                _divider(),
+                                _buildMenuTile(
+                                  icon: Icons.credit_card_outlined,
+                                  title: 'Moyens de paiement',
+                                  subtitle: 'Carte, mobile money',
+                                  onTap: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (context) =>
+                                              const PaymentMethodsScreen())),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                            _buildSectionTitle('Mes activités'),
+                            const SizedBox(height: 12),
+                            _buildMenuCard(
+                              children: [
+                                _buildMenuTile(
+                                  icon: Icons.receipt_long_outlined,
+                                  title: 'Historique des commandes',
+                                  subtitle: 'Voir vos anciennes commandes',
+                                  onTap: () =>
+                                      Navigator.pushNamed(context, '/orders'),
+                                ),
+                                _divider(),
+                                _buildMenuTile(
+                                  icon: Icons.event_seat_outlined,
+                                  title: 'Mes réservations',
+                                  subtitle: 'Tables réservées et statuts',
+                                  onTap: () => Navigator.pushNamed(
+                                      context, '/reservations'),
+                                ),
+                                _divider(),
+                                _buildMenuTile(
+                                  icon: Icons.favorite_border,
+                                  title: 'Mes favoris',
+                                  subtitle: 'Restaurants et plats enregistrés',
+                                  onTap: () => Navigator.pushNamed(
+                                      context, '/favorites'),
+                                ),
+                                _divider(),
+                                _buildMenuTile(
+                                  icon: Icons.local_offer_outlined,
+                                  title: 'Promotions',
+                                  subtitle: 'Mes offres et réductions',
+                                  onTap: () => _showPromotionsSheet(context),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                            _buildSectionTitle('Aide & paramètres'),
+                            const SizedBox(height: 12),
+                            _buildMenuCard(
+                              children: [
+                                _buildMenuTile(
+                                  icon: Icons.support_agent_outlined,
+                                  title: 'Support client',
+                                  subtitle: 'Besoin d\'aide ?',
+                                  onTap: () => _showSupportSheet(context),
+                                ),
+                                _divider(),
+                                _buildMenuTile(
+                                  icon: Icons.settings_outlined,
+                                  title: 'Paramètres',
+                                  subtitle: 'Notifications, sécurité, langue',
+                                  onTap: () => _showSettingsSheet(context),
+                                ),
+                                _divider(),
+                                _buildMenuTile(
+                                  icon: Icons.privacy_tip_outlined,
+                                  title: 'Confidentialité',
+                                  subtitle: 'Conditions et politique',
+                                  onTap: () => _showPrivacySheet(context),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 28),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 56,
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: orangeFlavor,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(90),
+                                    side: const BorderSide(color: orangeFlavor),
+                                  ),
+                                ),
+                                onPressed: () => _showLogoutDialog(context),
+                                icon: const Icon(Icons.logout),
+                                label: Text(
+                                  'Se déconnecter',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                          _divider(),
-                          _buildMenuTile(
-                            icon: Icons.credit_card_outlined,
-                            title: 'Moyens de paiement',
-                            subtitle: 'Carte, mobile money',
-                            onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (context) =>
-                                        const PaymentMethodsScreen())),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('Mes activités'),
-                      const SizedBox(height: 12),
-                      _buildMenuCard(
-                        children: [
-                          _buildMenuTile(
-                            icon: Icons.receipt_long_outlined,
-                            title: 'Historique des commandes',
-                            subtitle: 'Voir vos anciennes commandes',
-                            onTap: () =>
-                                Navigator.pushNamed(context, '/orders'),
-                          ),
-                          _divider(),
-                          _buildMenuTile(
-                            icon: Icons.event_seat_outlined,
-                            title: 'Mes réservations',
-                            subtitle: 'Tables réservées et statuts',
-                            onTap: () =>
-                                Navigator.pushNamed(context, '/reservations'),
-                          ),
-                          _divider(),
-                          _buildMenuTile(
-                            icon: Icons.favorite_border,
-                            title: 'Mes favoris',
-                            subtitle: 'Restaurants et plats enregistrés',
-                            onTap: () =>
-                                Navigator.pushNamed(context, '/favorites'),
-                          ),
-                          _divider(),
-                          _buildMenuTile(
-                            icon: Icons.local_offer_outlined,
-                            title: 'Promotions',
-                            subtitle: 'Mes offres et réductions',
-                            onTap: () => _showPromotionsSheet(context),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('Aide & paramètres'),
-                      const SizedBox(height: 12),
-                      _buildMenuCard(
-                        children: [
-                          _buildMenuTile(
-                            icon: Icons.support_agent_outlined,
-                            title: 'Support client',
-                            subtitle: 'Besoin d\'aide ?',
-                            onTap: () => _showSupportSheet(context),
-                          ),
-                          _divider(),
-                          _buildMenuTile(
-                            icon: Icons.settings_outlined,
-                            title: 'Paramètres',
-                            subtitle: 'Notifications, sécurité, langue',
-                            onTap: () => _showSettingsSheet(context),
-                          ),
-                          _divider(),
-                          _buildMenuTile(
-                            icon: Icons.privacy_tip_outlined,
-                            title: 'Confidentialité',
-                            subtitle: 'Conditions et politique',
-                            onTap: () => _showPrivacySheet(context),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 28),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 56,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: orangeFlavor,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(90),
-                              side: const BorderSide(color: orangeFlavor),
-                            ),
-                          ),
-                          onPressed: () => _showLogoutDialog(context),
-                          icon: const Icon(Icons.logout),
-                          label: Text(
-                            'Se déconnecter',
-                            style: GoogleFonts.poppins(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
               ),
             ),
           ],
@@ -782,7 +859,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async {
                     if (currentPasswordController.text.trim().isEmpty ||
                         newPasswordController.text.trim().isEmpty ||
                         confirmPasswordController.text.trim().isEmpty) {
@@ -805,26 +882,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       return;
                     }
 
-                    final updated = UserAuthService.instance.updatePassword(
-                      currentPassword: currentPasswordController.text.trim(),
-                      newPassword: newPasswordController.text.trim(),
-                    );
-
-                    if (!updated) {
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Mot de passe actuel incorrect'),
+                          content: Text('Utilisateur non connecté'),
                         ),
                       );
                       return;
                     }
 
-                    Navigator.maybePop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Mot de passe modifié avec succès'),
-                      ),
-                    );
+                    try {
+                      await user
+                          .updatePassword(newPasswordController.text.trim());
+                      Navigator.maybePop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Mot de passe modifié avec succès'),
+                        ),
+                      );
+                    } on FirebaseAuthException catch (e) {
+                      String message =
+                          'Erreur lors du changement de mot de passe.';
+                      if (e.code == 'requires-recent-login') {
+                        message =
+                            'Veuillez vous reconnecter avant de changer votre mot de passe.';
+                      }
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(message)),
+                      );
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: orangeFlavor,
@@ -952,7 +1039,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+                if (!context.mounted) return;
                 Navigator.pushNamedAndRemoveUntil(
                   context,
                   '/login',
@@ -1028,13 +1117,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
               border: Border.all(color: Colors.white.withOpacity(0.3)),
             ),
             child: ClipOval(
-              child: profileImagePath != null
-                  ? Image.file(
-                      File(profileImagePath!),
-                      fit: BoxFit.cover,
-                      width: 72,
-                      height: 72,
-                    )
+              child: _photoUrl != null && _photoUrl!.isNotEmpty
+                  ? (_photoUrl!.startsWith('http')
+                      ? Image.network(
+                          _photoUrl!,
+                          fit: BoxFit.cover,
+                          width: 72,
+                          height: 72,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(Icons.person,
+                                  color: Colors.white, size: 38),
+                        )
+                      : Image.file(
+                          File(_photoUrl!),
+                          fit: BoxFit.cover,
+                          width: 72,
+                          height: 72,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(Icons.person,
+                                  color: Colors.white, size: 38),
+                        ))
                   : const Icon(
                       Icons.person,
                       color: Colors.white,
@@ -1048,7 +1150,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  userName,
+                  _displayName,
                   style: GoogleFonts.poppins(
                     color: Colors.white,
                     fontSize: 20,
@@ -1057,7 +1159,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  userEmail,
+                  _email,
                   style: GoogleFonts.poppins(
                     color: Colors.white.withOpacity(0.9),
                     fontSize: 13,
@@ -1065,7 +1167,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  userPhone,
+                  _phone,
                   style: GoogleFonts.poppins(
                     color: Colors.white.withOpacity(0.9),
                     fontSize: 13,
