@@ -108,7 +108,6 @@ Les index suivants devront être créés afin d'optimiser les performances :
 - Index sur `phone`
 - Index sur `created_at`
 
-
 ## Statuts possibles
 
 | Statut | Description |
@@ -127,7 +126,6 @@ Les règles suivantes devront être respectées :
 - Un utilisateur doit toujours posséder un rôle valide.
 - Un utilisateur suspendu ne peut pas se connecter.
 - Un administrateur ne peut pas être supprimé sans autorisation spécifique.
-
 
 ## Relations avec les autres tables
 
@@ -182,4 +180,183 @@ Les informations relatives aux adresses sont stockées dans une table séparée 
 | is_default | boolean, défaut false | Indique si cette adresse est l'adresse par défaut de l'utilisateur |
 | is_active | boolean, défaut true | Indique si l'adresse est toujours active et utilisable |
 | created_at | timestamp | Date de création de l'adresse |
-| updated_at |
+| updated_at | timestamp | Date de dernière modification |
+| deleted_at | timestamp, nullable | Date de suppression logique (Soft Delete Laravel) |
+
+## Index
+
+Les index suivants devront être créés afin d'optimiser les performances :
+
+- Index sur `user_id` pour accélérer la récupération des adresses d'un utilisateur
+- Index composé sur `(user_id, is_default)` pour vérifier rapidement l'existence d'une adresse par défaut
+- Index sur `is_active` pour filtrer les adresses actives
+- Index sur `city` pour les recherches géographiques
+
+Un index spatial ou une stratégie géographique adaptée (comme le calcul de distance basé sur les coordonnées) pourra être ajouté ultérieurement selon le moteur MySQL utilisé et les besoins réels de l'application en matière de recherches de proximité.
+
+## Contraintes
+
+Les règles suivantes devront être respectées :
+
+- Une adresse appartient obligatoirement à un utilisateur (clé étrangère `user_id` non nullable).
+- Un utilisateur peut enregistrer plusieurs adresses.
+- Un utilisateur ne peut avoir qu'une seule adresse active définie comme adresse par défaut. Lorsqu'une nouvelle adresse devient l'adresse par défaut, toutes les autres adresses du même utilisateur doivent automatiquement passer à `is_default = false`. Cette opération devra être gérée par Laravel dans une transaction afin d'éviter plusieurs adresses par défaut en cas de demandes simultanées.
+- Une adresse inactive (`is_active = false`) ou supprimée logiquement (`deleted_at` renseigné) ne peut pas rester définie comme adresse par défaut.
+- Une adresse supprimée logiquement ne doit plus être proposée ni utilisée pour les livraisons.
+- Le champ `recipient_name` est obligatoire afin de garantir une livraison nominative.
+- Le champ `address_line_1` est obligatoire pour assurer une localisation minimale.
+- `latitude` et `longitude` doivent être soit toutes les deux renseignées, soit toutes les deux nulles.
+- La latitude doit être comprise entre -90 et 90.
+- La longitude doit être comprise entre -180 et 180.
+
+## Relations
+
+La table `user_addresses` est reliée aux tables suivantes :
+
+| Table | Type de relation | Description |
+|---|---|---|
+| users | Une adresse appartient à un seul utilisateur | Chaque adresse est liée à un compte utilisateur via la clé étrangère `user_id` |
+| orders | Une adresse peut être sélectionnée lors de la création d'une commande | La table `orders` devra conserver une copie figée des informations de livraison utilisées au moment de la commande. La modification ou la suppression ultérieure de l'adresse dans `user_addresses` ne doit jamais modifier l'historique d'une commande déjà passée. |
+
+## Conclusion
+
+La table `user_addresses` est indispensable au bon fonctionnement des livraisons sur FlavorWay.
+
+Elle permet aux clients d'enregistrer et de gérer facilement leurs lieux de livraison, d'associer des instructions précises pour les livreurs, et de faciliter l'intégration future de fonctionnalités avancées telles que la géolocalisation en temps réel, la suggestion d'adresses récentes ou la validation automatique des zones de livraison.
+
+---
+
+# Table : restaurants
+
+## Présentation
+
+La table `restaurants` contient les informations propres aux établissements présents sur FlavorWay.
+
+Les informations personnelles du propriétaire (nom, email, mot de passe, etc.) restent dans la table `users`. La table `restaurants` contient uniquement les informations commerciales et opérationnelles de l'établissement.
+
+Un utilisateur ayant le rôle `restaurant_owner` peut posséder ou gérer un ou plusieurs restaurants.
+
+Les employés autorisés à gérer l'établissement seront gérés ultérieurement dans une table séparée nommée `restaurant_employees`.
+
+## Structure de la table
+
+| Champ | Type | Description |
+|---|---|---|
+| id | bigint, auto-incrément | Identifiant unique du restaurant |
+| owner_id | bigint, foreign key | Identifiant de l'utilisateur propriétaire du restaurant (clé étrangère vers `users.id`) |
+| name | string | Nom commercial de l'établissement |
+| slug | string, unique | Identifiant URL unique généré à partir du nom |
+| description | text, nullable | Description de l'établissement, de sa cuisine et de son ambiance |
+| email | string, nullable | Adresse e-mail de contact du restaurant |
+| phone | string | Numéro de téléphone du restaurant |
+| logo | string, nullable | URL ou chemin du logo du restaurant |
+| cover_image | string, nullable | URL ou chemin de l'image de couverture du restaurant |
+| address_line_1 | string | Adresse principale du restaurant |
+| address_line_2 | string, nullable | Complément d'adresse |
+| postal_code | string, nullable | Code postal |
+| city | string | Ville du restaurant |
+| region | string, nullable | Région ou département |
+| country | string | Pays du restaurant |
+| latitude | decimal(10,7), nullable | Latitude pour la localisation sur la carte |
+| longitude | decimal(10,7), nullable | Longitude pour la localisation sur la carte |
+| currency | string | Devise utilisée par le restaurant. Cette devise est propre au restaurant et permet la gestion d'une plateforme multi-pays. |
+| minimum_order_amount | decimal(10,2) | Montant minimum de commande dans la devise du restaurant |
+| average_preparation_time | integer | Estimation exprimée en minutes utilisée pour informer les clients et les livreurs du temps de préparation moyen |
+| delivery_radius | decimal(10,2), nullable | Rayon de livraison maximal en kilomètres |
+| delivery_fee | decimal(10,2) | Frais de livraison de base du restaurant. Le coût réel de livraison pourra ensuite être ajusté selon les règles métier (distance, promotions, zone de livraison, etc.). |
+| rating_average | decimal(2,1), défaut 0.0 | Note moyenne calculée automatiquement à partir des avis enregistrés dans la table `reviews`. Cette valeur ne doit jamais être modifiée manuellement. |
+| reviews_count | integer, défaut 0 | Nombre total d'avis. Ce compteur est synchronisé automatiquement avec la table `reviews`. Il ne doit jamais être modifié manuellement. |
+| status | enum | Statut administratif du restaurant (pending, approved, rejected, suspended, closed) |
+| is_open | boolean, défaut true | État opérationnel actuel du restaurant (ouvert ou temporairement fermé) |
+| is_featured | boolean, défaut false | Indique si le restaurant est mis en avant dans l'application |
+| is_delivery_enabled | boolean, défaut true | Indique si le restaurant accepte les commandes en livraison |
+| is_pickup_enabled | boolean, défaut true | Indique si le restaurant accepte les commandes à emporter |
+| approved_at | timestamp, nullable | Date à laquelle le restaurant a été approuvé |
+| suspended_at | timestamp, nullable | Date à laquelle le restaurant a été suspendu |
+| created_at | timestamp | Date de création de l'enregistrement |
+| updated_at | timestamp | Date de dernière modification |
+| deleted_at | timestamp, nullable | Date de suppression logique (Soft Delete Laravel) |
+
+Pour les champs monétaires (`minimum_order_amount`, `delivery_fee`), les montants utilisent la devise définie dans le champ `currency` du restaurant.
+
+L'utilisation d'un type décimal (`decimal(10,2)`) est recommandée pour les montants afin d'éviter les imprécisions liées aux nombres flottants.
+
+## Statuts possibles
+
+| Statut | Description |
+|---|---|
+| pending | Le restaurant est en attente de validation par un administrateur. Il ne peut pas encore recevoir de commandes. |
+| approved | Le restaurant est approuvé et peut recevoir des commandes et être affiché dans l'application. |
+| rejected | La demande d'inscription du restaurant a été refusée par un administrateur. |
+| suspended | Le restaurant est temporairement suspendu par un administrateur, par exemple pour non-respect des conditions générales. |
+| closed | Le restaurant est définitivement fermé et ne peut plus recevoir de commandes. |
+
+Le champ `status` représente le statut administratif du restaurant. Le champ `is_open` représente uniquement son état opérationnel actuel, par exemple ouvert ou temporairement fermé pour la pause de midi. Ces deux champs ne doivent pas être confondus.
+
+## Index
+
+Les index suivants devront être créés afin d'optimiser les performances :
+
+- Index unique sur `slug`
+- Index sur `owner_id` pour accélérer la récupération des restaurants d'un propriétaire
+- Index sur `status` pour filtrer par statut administratif
+- Index sur `is_open` pour filtrer les restaurants actuellement ouverts
+- Index sur `is_featured` pour les restaurants mis en avant
+- Index sur `city` pour les recherches par ville
+- Index composé sur `(status, is_open)` pour les recherches courantes de restaurants approuvés et ouverts
+
+Pour les coordonnées géographiques, un index spatial ou une stratégie adaptée pourra être ajouté selon les besoins réels de recherche par distance.
+
+## Contraintes
+
+Les règles suivantes devront être respectées :
+
+- Un restaurant appartient obligatoirement à un utilisateur propriétaire (clé étrangère `owner_id` non nullable).
+- Le propriétaire doit posséder le rôle `restaurant_owner`.
+- Le slug doit être unique.
+- `latitude` et `longitude` doivent être soit toutes les deux renseignées, soit toutes les deux nulles.
+- La latitude doit être comprise entre -90 et 90.
+- La longitude doit être comprise entre -180 et 180.
+- Les montants (`minimum_order_amount`, `delivery_fee`) ne peuvent pas être négatifs.
+- Le rayon de livraison (`delivery_radius`) ne peut pas être négatif.
+- La note moyenne (`rating_average`) doit être comprise entre 0 et 5.
+- Le nombre d'avis (`reviews_count`) ne peut pas être négatif.
+- Un restaurant non approuvé (`pending`, `rejected`), suspendu (`suspended`) ou fermé administrativement (`closed`) ne doit pas accepter de commande.
+- Un restaurant supprimé logiquement ne doit plus être affiché dans l'application.
+- `approved_at` doit être renseigné lorsque le restaurant est approuvé (`status = approved`).
+- `suspended_at` doit être renseigné lorsque le restaurant est suspendu (`status = suspended`).
+
+## Relations
+
+La table `restaurants` est reliée aux tables suivantes :
+
+| Table | Type de relation | Description |
+|---|---|---|
+| users | Un restaurant appartient à un seul propriétaire | Le propriétaire du restaurant est un utilisateur ayant le rôle `restaurant_owner` |
+| restaurant_employees | Un restaurant peut avoir plusieurs employés | Les employés autorisés à gérer l'établissement (table documentée ultérieurement) |
+| product_categories | Un restaurant peut avoir plusieurs catégories de menu | Les catégories organisent les produits du restaurant (table documentée ultérieurement) |
+| products | Un restaurant peut proposer plusieurs produits | Les plats, boissons et articles disponibles à la commande (table documentée ultérieurement) |
+| orders | Un restaurant reçoit plusieurs commandes | Un restaurant reçoit plusieurs commandes mais les informations importantes utilisées lors de la commande seront conservées dans la table `orders` afin de préserver l'historique, même si les informations du restaurant sont modifiées par la suite. |
+| reviews | Un restaurant peut recevoir plusieurs avis | Les avis laissés par les clients permettent de calculer `rating_average` et `reviews_count` |
+| promotions | Un restaurant peut proposer plusieurs promotions | Les offres spéciales et réductions proposées par le restaurant (table documentée ultérieurement) |
+
+## Horaires d'ouverture
+
+Les horaires détaillés du restaurant ne doivent pas être stockés directement dans la table `restaurants`.
+
+Ils seront gérés ultérieurement dans une table séparée nommée :
+
+`restaurant_opening_hours`
+
+Cette séparation permettra de gérer :
+
+- plusieurs plages horaires par jour (ex : service midi et service soir) ;
+- les jours de fermeture (ex : fermé le lundi) ;
+- les horaires exceptionnels (ex : jours fériés) ;
+- les changements temporaires (ex : fermeture pour travaux).
+
+## Conclusion
+
+La table `restaurants` est centrale pour la gestion des restaurants, des menus, des commandes et des livraisons sur FlavorWay.
+
+Elle structure l'ensemble des informations opérationnelles et commerciales propres à chaque établissement et constitue la clé de voûte de tout le système de commande, de réservation et de livraison de la plateforme.
