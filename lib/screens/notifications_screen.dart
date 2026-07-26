@@ -70,10 +70,16 @@ class NotificationsScreen extends StatelessWidget {
                   NotificationService.instance.markAsRead(notification.id);
 
                   if (notification.title.contains('Commande')) {
+                    final orderId = notification.message.split(' ').firstWhere(
+                          (word) => word.startsWith('FLW-'),
+                          orElse: () => '',
+                        );
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const OrderTrackingScreen(),
+                        builder: (_) => OrderTrackingScreen(
+                          orderId: orderId,
+                        ),
                       ),
                     );
                     return;

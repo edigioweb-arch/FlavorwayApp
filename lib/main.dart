@@ -86,7 +86,11 @@ class FlavorWayApp extends StatelessWidget {
             '/cart': (context) => const CartScreen(),
             '/checkout': (context) => const CheckoutScreen(),
             '/order-success': (context) => const OrderSuccessScreen(),
-            '/order-tracking': (context) => const OrderTrackingScreen(),
+            '/order-tracking': (context) {
+              final orderId =
+                  ModalRoute.of(context)?.settings.arguments as String? ?? '';
+              return OrderTrackingScreen(orderId: orderId);
+            },
             '/chat': (context) => const ChatScreen(
                   conversationId: 'restaurant_joli_coin',
                 ),

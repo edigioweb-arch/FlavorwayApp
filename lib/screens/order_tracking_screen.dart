@@ -1,10 +1,15 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'chat_screen.dart';
+import '../services/order_service.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
-  const OrderTrackingScreen({super.key});
+  final String orderId;
+
+  const OrderTrackingScreen({
+    super.key,
+    required this.orderId,
+  });
 
   @override
   State<OrderTrackingScreen> createState() => _OrderTrackingScreenState();
@@ -16,109 +21,67 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   static const Color greenSuccess = Color(0xFF4CAF50);
   static const Color screenBackground = Color(0xFFF3F0FA);
 
-  final String restaurantName = 'Joli Coin';
-  final String courierName = 'Jean M.';
-  final String courierVehicle = 'Peugeot 206';
-  final String courierPhone = '+242 06 00 00 00';
-
-  int currentStep = 0;
-  final List<Timer> _timers = [];
-
-  final List<_TrackingStep> steps = const [
-    _TrackingStep(
-      title: 'Commande reçue',
-      time: '15:00',
-      managedBy: 'Restaurant',
-    ),
-    _TrackingStep(
-      title: 'En préparation',
-      time: '15:12',
-      managedBy: 'Restaurant',
-    ),
-    _TrackingStep(
-      title: 'Coursier a récupéré la commande',
-      time: '15:28',
-      managedBy: 'Livreur',
-    ),
-    _TrackingStep(
-      title: 'En route',
-      time: '15:35',
-      managedBy: 'Livreur',
-    ),
-    _TrackingStep(
-      title: 'Livré',
-      time: '15:48',
-      managedBy: 'Livreur',
-    ),
-  ];
-
-  double get progressValue {
-    if (steps.length <= 1) return 0;
-    return currentStep / (steps.length - 1);
-  }
+  Stream<OrderModel?>? _orderStream;
 
   @override
   void initState() {
     super.initState();
-    _startTrackingDemo();
-  }
-
-  void _startTrackingDemo() {
-    _timers.add(
-      Timer(const Duration(seconds: 3), () {
-        if (mounted) setState(() => currentStep = 1);
-      }),
-    );
-    _timers.add(
-      Timer(const Duration(seconds: 6), () {
-        if (mounted) setState(() => currentStep = 2);
-      }),
-    );
-    _timers.add(
-      Timer(const Duration(seconds: 9), () {
-        if (mounted) setState(() => currentStep = 3);
-      }),
-    );
-  }
-
-  @override
-  void dispose() {
-    for (final timer in _timers) {
-      timer.cancel();
-    }
-    super.dispose();
+    _orderStream = OrderService.instance.orderStream(widget.orderId);
   }
 
   @override
   Widget build(BuildContext context) {
-    final current = steps[currentStep];
-
     return Scaffold(
       backgroundColor: screenBackground,
       body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(context),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    _buildTrackingSummary(current),
-                    const SizedBox(height: 18),
-                    _buildActionButtons(),
-                    const SizedBox(height: 18),
-                    _buildTimeline(),
-                  ],
+        child: StreamBuilder<OrderModel?>(
+          stream: _orderStream,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final order = snapshot.data;
+            if (order == null) {
+              return const Center(
+                child: Text('Commande introuvable'),
+              );
+            }
+
+            final currentStep = order.lastTimelineStep;
+            final steps = order.timeline;
+            final progressValue = steps.isEmpty
+                ? 0.0
+                : ((steps.indexWhere((s) => s.status == order.status) + 1) /
+                        steps.length)
+                    .clamp(0.0, 1.0);
+
+            return Column(
+              children: [
+                _buildHeader(context, order),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        _buildTrackingSummary(
+                            order, currentStep, progressValue),
+                        const SizedBox(height: 18),
+                        _buildActionButtons(order),
+                        const SizedBox(height: 18),
+                        _buildTimeline(order, steps),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, OrderModel order) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
       child: Row(
@@ -133,7 +96,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           ),
           Expanded(
             child: Text(
-              '#CMD1245 - Livraison',
+              '#${order.orderId} - Livraison',
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
                 color: const Color(0xFF263238),
@@ -148,7 +111,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     );
   }
 
-  Widget _buildTrackingSummary(_TrackingStep current) {
+  Widget _buildTrackingSummary(
+      OrderModel order, TimelineStep current, double progressValue) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 22),
       decoration: BoxDecoration(
@@ -197,7 +161,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Restaurant: $restaurantName\nCoursier: $courierName • $courierVehicle',
+                        'Restaurant: ${order.restaurantName}${order.courierName.isNotEmpty ? '\nCoursier: ${order.courierName}${order.courierVehicle.isNotEmpty ? ' • ${order.courierVehicle}' : ''}' : ''}',
                         style: GoogleFonts.poppins(
                           color: Colors.grey.shade700,
                           fontSize: 13,
@@ -222,7 +186,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         borderRadius: BorderRadius.circular(90),
                       ),
                       child: Text(
-                        'ETA: 12 min',
+                        order.status,
                         style: GoogleFonts.poppins(
                           color: Colors.white,
                           fontSize: 12,
@@ -232,7 +196,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     ),
                     const SizedBox(height: 7),
                     Text(
-                      '12:45',
+                      _formatTime(current.timestamp),
                       style: GoogleFonts.poppins(
                         color: Colors.grey.shade600,
                         fontSize: 12,
@@ -240,7 +204,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       ),
                     ),
                     Text(
-                      'Mis à jour à ${current.time}',
+                      'Mis à jour à ${_formatTime(current.timestamp)}',
                       style: GoogleFonts.poppins(
                         color: Colors.grey.shade600,
                         fontSize: 11,
@@ -296,14 +260,23 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     );
   }
 
-  Widget _buildActionButtons() {
+  Widget _buildActionButtons(OrderModel order) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 22),
       child: Row(
         children: [
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: _showMessageSheet,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ChatScreen(
+                      conversationId: 'courier_jean_m',
+                    ),
+                  ),
+                );
+              },
               icon: const Icon(Icons.chat_bubble_outline_rounded),
               label: const Text('Message'),
               style: OutlinedButton.styleFrom(
@@ -319,7 +292,61 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           const SizedBox(width: 14),
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: _showCallSheet,
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.vertical(top: Radius.circular(24)),
+                  ),
+                  builder: (context) {
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(22, 18, 22, 26),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Appeler le coursier',
+                            style: GoogleFonts.poppins(
+                              color: violetFlavor,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const CircleAvatar(
+                              backgroundColor: greenSuccess,
+                              child: Icon(Icons.phone_rounded,
+                                  color: Colors.white),
+                            ),
+                            title: Text(order.courierName.isNotEmpty
+                                ? order.courierName
+                                : 'Non assigné'),
+                            subtitle: Text(order.courierPhone.isNotEmpty
+                                ? order.courierPhone
+                                : 'Non disponible'),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: () {
+                              Navigator.maybePop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(order.courierPhone.isNotEmpty
+                                      ? 'Appel vers ${order.courierPhone}'
+                                      : 'Aucun numéro disponible'),
+                                  duration: const Duration(seconds: 1),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
               icon: const Icon(Icons.phone_rounded),
               label: const Text('Appeler'),
               style: OutlinedButton.styleFrom(
@@ -337,7 +364,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     );
   }
 
-  Widget _buildTimeline() {
+  Widget _buildTimeline(OrderModel order, List<TimelineStep> steps) {
+    if (steps.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final latestStatus = order.status;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(22, 24, 22, 34),
@@ -350,8 +383,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       child: Column(
         children: List.generate(steps.length, (index) {
           final step = steps[index];
-          final isValidated = index <= currentStep;
           final isLast = index == steps.length - 1;
+          final isValidated =
+              steps.indexWhere((s) => s.status == latestStatus) >= index;
 
           return IntrinsicHeight(
             child: Row(
@@ -400,7 +434,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                             width: 3,
                             margin: const EdgeInsets.symmetric(vertical: 4),
                             decoration: BoxDecoration(
-                              color: index < currentStep
+                              color: index <
+                                      steps.indexWhere(
+                                          (s) => s.status == latestStatus)
                                   ? greenSuccess.withOpacity(0.75)
                                   : Colors.grey.shade300,
                               borderRadius: BorderRadius.circular(99),
@@ -423,7 +459,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          step.title,
+                          step.status,
                           style: GoogleFonts.poppins(
                             color: const Color(0xFF1F1F1F),
                             fontSize: 14,
@@ -432,7 +468,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          isValidated ? step.time : 'En attente',
+                          isValidated
+                              ? _formatTime(step.timestamp)
+                              : 'En attente',
                           style: GoogleFonts.poppins(
                             color: Colors.grey.shade700,
                             fontSize: 12,
@@ -442,7 +480,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         const SizedBox(height: 3),
                         Text(
                           isValidated
-                              ? 'Étape validée par ${step.managedBy.toLowerCase()}'
+                              ? 'Étape validée par ${step.updatedBy.toLowerCase()}'
                               : 'Non validée',
                           style: GoogleFonts.poppins(
                             color: isValidated ? greenSuccess : Colors.grey,
@@ -462,76 +500,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     );
   }
 
-  void _showMessageSheet() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const ChatScreen(
-          conversationId: 'courier_jean_m',
-        ),
-      ),
-    );
+  String _formatTime(DateTime time) {
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
-
-  void _showCallSheet() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(22, 18, 22, 26),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Appeler le coursier',
-                style: GoogleFonts.poppins(
-                  color: violetFlavor,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const CircleAvatar(
-                  backgroundColor: greenSuccess,
-                  child: Icon(Icons.phone_rounded, color: Colors.white),
-                ),
-                title: Text(courierName),
-                subtitle: Text(courierPhone),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () {
-                  Navigator.maybePop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Appel vers $courierPhone'),
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _TrackingStep {
-  final String title;
-  final String time;
-  final String managedBy;
-
-  const _TrackingStep({
-    required this.title,
-    required this.time,
-    required this.managedBy,
-  });
 }
 
 class _MiniMapPainter extends CustomPainter {

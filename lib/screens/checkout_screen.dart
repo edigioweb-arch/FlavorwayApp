@@ -339,29 +339,48 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
           elevation: 0,
         ),
-        onPressed: () {
-          final orderNumber =
-              '#FLW-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-
+        onPressed: () async {
           final restaurantName = cart.items.isNotEmpty
               ? cart.items.first.restaurantName
               : 'Restaurant';
 
-          OrderService.instance.addOrder(
-            restaurantName: restaurantName,
-            orderNumber: orderNumber,
-            date: DateTime.now().toString().substring(0, 16),
-            total: cart.totalAmount,
-            status: 'Livrée',
-          );
-          NotificationService.instance.addNotification(
-            title: 'Commande créée',
-            message:
-                'Votre commande $orderNumber est en préparation.',
-          );
+          try {
+            final orderId = await OrderService.instance.createOrder(
+              restaurantName: restaurantName,
+              restaurantId: 'joli_coin',
+              items: cart.items
+                  .map((item) => {
+                        'id': item.id,
+                        'name': item.name,
+                        'image': item.image,
+                        'price': item.price,
+                        'quantity': item.quantity,
+                        'options': item.options,
+                      })
+                  .toList(),
+              total: cart.totalAmount,
+              deliveryAddress: selectedAddress,
+              paymentMethod: selectedPaymentMethod,
+            );
 
-          cart.clear();
-          Navigator.pushReplacementNamed(context, '/order-success');
+            NotificationService.instance.addNotification(
+              title: 'Commande créée',
+              message: 'Votre commande $orderId est en préparation.',
+            );
+
+            cart.clear();
+            if (!context.mounted) return;
+            Navigator.pushReplacementNamed(
+              context,
+              '/order-success',
+              arguments: orderId,
+            );
+          } catch (e) {
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Erreur : ${e.toString()}')),
+            );
+          }
         },
         child: Text(
           'Passer la commande • ${cart.totalAmount.toStringAsFixed(0)} CFA',

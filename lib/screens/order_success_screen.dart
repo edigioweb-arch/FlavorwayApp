@@ -10,6 +10,9 @@ class OrderSuccessScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final orderId = ModalRoute.of(context)?.settings.arguments as String? ??
+        'FLW-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FB), // Fond clair uniforme
       body: SafeArea(
@@ -52,7 +55,7 @@ class OrderSuccessScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'N° de commande : #FLW-1245',
+                    'N° de commande : $orderId',
                     style: GoogleFonts.poppins(
                       fontSize: 15,
                       color: Colors.grey.shade600,
@@ -100,7 +103,8 @@ class OrderSuccessScreen extends StatelessWidget {
                       height: 55,
                       child: ElevatedButton.icon(
                         onPressed: () => Navigator.pushReplacementNamed(
-                            context, '/order-tracking'),
+                            context, '/order-tracking',
+                            arguments: orderId),
                         icon:
                             const Icon(Icons.map_outlined, color: Colors.white),
                         label: Text(

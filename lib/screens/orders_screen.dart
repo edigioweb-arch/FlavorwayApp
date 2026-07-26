@@ -66,9 +66,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   fontWeight: FontWeight.w800,
                   fontSize: 14,
                 ),
-                tabs: [
-                  const Tab(text: 'En cours'),
-                  const Tab(text: 'Historique'),
+                tabs: const [
+                  Tab(text: 'En cours'),
+                  Tab(text: 'Historique'),
                 ],
               ),
             ),
@@ -76,27 +76,29 @@ class _OrdersScreenState extends State<OrdersScreen> {
         ),
         body: TabBarView(
           children: [
-            _buildActiveOrders(context),
-            _buildOrdersHistory(context),
+            _buildActiveOrders(),
+            _buildOrdersHistory(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildActiveOrders(BuildContext context) {
-    return AnimatedBuilder(
-      animation: OrderService.instance,
-      builder: (context, _) {
-        final orders = OrderService.instance.activeOrders;
+  Widget _buildActiveOrders() {
+    return StreamBuilder<List<OrderModel>>(
+      stream: OrderService.instance.activeOrdersStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final orders = snapshot.data ?? [];
 
         if (orders.isEmpty) {
           return Center(
             child: Text(
               'Aucune commande en cours',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w600,
-              ),
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
             ),
           );
         }
@@ -110,13 +112,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
             return _buildOrderCard(
               context,
               restaurant: order.restaurantName,
-              date: order.date,
+              date: _formatDate(order.createdAt),
               price: '${order.total.toStringAsFixed(0)} CFA',
-            items: 'Commande FlavorWay',
+              items: '${order.items.length} article(s)',
               status: order.status,
               statusColor: Colors.orange,
               isActive: true,
-              orderId: order.orderNumber,
+              orderId: order.orderId,
             );
           },
         );
@@ -124,19 +126,21 @@ class _OrdersScreenState extends State<OrdersScreen> {
     );
   }
 
-  Widget _buildOrdersHistory(BuildContext context) {
-    return AnimatedBuilder(
-      animation: OrderService.instance,
-      builder: (context, _) {
-        final orders = OrderService.instance.completedOrders;
+  Widget _buildOrdersHistory() {
+    return StreamBuilder<List<OrderModel>>(
+      stream: OrderService.instance.completedOrdersStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final orders = snapshot.data ?? [];
 
         if (orders.isEmpty) {
           return Center(
             child: Text(
-              'Aucune commande dans l’historique',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w600,
-              ),
+              'Aucune commande dans l\'historique',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
             ),
           );
         }
@@ -150,21 +154,23 @@ class _OrdersScreenState extends State<OrdersScreen> {
             return _buildOrderCard(
               context,
               restaurant: order.restaurantName,
-              date: order.date,
+              date: _formatDate(order.createdAt),
               price: '${order.total.toStringAsFixed(0)} CFA',
-            items: 'Commande FlavorWay',
-              status: order.status, // Dynamic data, keep as is
+              items: '${order.items.length} article(s)',
+              status: order.status,
               statusColor:
-                  order.status == 'Livrée'
-                      ? Colors.green
-                      : Colors.orange,
+                  order.status == 'Livré' ? Colors.green : Colors.orange,
               isActive: false,
-              orderId: order.orderNumber,
+              orderId: order.orderId,
             );
           },
         );
       },
     );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 
   Widget _buildOrderCard(
@@ -248,7 +254,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      isActive // l10n: inDelivery, delivered
+                      isActive
                           ? Icons.timer_rounded
                           : Icons.check_circle_rounded,
                       color: statusColor,
@@ -305,8 +311,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
               ),
               if (isActive)
                 ElevatedButton.icon(
-                  onPressed: () =>
-                      Navigator.pushNamed(context, '/order-tracking'),
+                  onPressed: () => Navigator.pushNamed(
+                    context,
+                    '/order-tracking',
+                    arguments: orderId,
+                  ),
                   icon: const Icon(Icons.chevron_right_rounded,
                       color: Colors.white),
                   iconAlignment: IconAlignment.end,
@@ -347,7 +356,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                         ),
                       ),
                       child: const Text(
-                        'Ticket', // l10n: ticket
+                        'Ticket',
                         style: TextStyle(
                           color: violetFlavor,
                           fontWeight: FontWeight.bold,
@@ -371,7 +380,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                         ),
                       ),
                       child: const Text(
-                        'Recommander', // l10n: reorder
+                        'Recommander',
                         style: TextStyle(
                           color: orangeFlavor,
                           fontWeight: FontWeight.bold,
@@ -406,7 +415,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
         return Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
-            // l10n: orderTicket
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -417,7 +425,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              const SizedBox(height: 14), // Dynamic data, keep as is
+              const SizedBox(height: 14),
               Text(orderId),
               Text(restaurant),
               Text(items),
