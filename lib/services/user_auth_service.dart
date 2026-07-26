@@ -160,8 +160,7 @@ class UserAuthService extends ChangeNotifier {
 
     if (user == null) {
       throw UserAuthException(
-        message:
-            'Vous devez être connecté pour modifier votre mot de passe.',
+        message: 'Vous devez être connecté pour modifier votre mot de passe.',
       );
     }
 
@@ -172,8 +171,7 @@ class UserAuthService extends ChangeNotifier {
       throw _convertAuthException(e);
     } catch (e) {
       throw UserAuthException(
-        message:
-            'Impossible de modifier le mot de passe. Réessayez plus tard.',
+        message: 'Impossible de modifier le mot de passe. Réessayez plus tard.',
       );
     }
   }
@@ -191,8 +189,7 @@ class UserAuthService extends ChangeNotifier {
 
     if (user == null) {
       throw UserAuthException(
-        message:
-            'Vous devez être connecté pour recharger vos informations.',
+        message: 'Vous devez être connecté pour recharger vos informations.',
       );
     }
 
@@ -218,8 +215,7 @@ class UserAuthService extends ChangeNotifier {
 
     if (user == null) {
       throw UserAuthException(
-        message:
-            'Vous devez être connecté pour supprimer votre compte.',
+        message: 'Vous devez être connecté pour supprimer votre compte.',
       );
     }
 
@@ -337,8 +333,7 @@ class UserAuthService extends ChangeNotifier {
         message = 'Ce compte a été désactivé.';
         break;
       case 'too-many-requests':
-        message =
-            'Trop de tentatives. Réessayez dans quelques minutes.';
+        message = 'Trop de tentatives. Réessayez dans quelques minutes.';
         break;
 
       // Inscription
@@ -349,8 +344,7 @@ class UserAuthService extends ChangeNotifier {
         message = 'Le mot de passe doit contenir au moins 6 caractères.';
         break;
       case 'operation-not-allowed':
-        message =
-            'La connexion par e-mail et mot de passe n\'est pas activée.';
+        message = 'La connexion par e-mail et mot de passe n\'est pas activée.';
         break;
 
       // Réinitialisation du mot de passe
@@ -372,8 +366,7 @@ class UserAuthService extends ChangeNotifier {
 
       // Suppression de compte
       case 'credential-too-old-login-again':
-        message =
-            'Veuillez vous reconnecter avant de supprimer votre compte.';
+        message = 'Veuillez vous reconnecter avant de supprimer votre compte.';
         break;
 
       // Réseau
@@ -383,8 +376,7 @@ class UserAuthService extends ChangeNotifier {
 
       // Par défaut
       default:
-        message = e.message ??
-            'Une erreur d\'authentification est survenue.';
+        message = e.message ?? 'Une erreur d\'authentification est survenue.';
     }
 
     return UserAuthException(
@@ -418,4 +410,3 @@ class UserAuthException implements Exception {
   @override
   String toString() => message;
 }
-</create_file>
