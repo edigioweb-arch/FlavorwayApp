@@ -382,7 +382,7 @@ Chaque collaborateur possède un rôle et des permissions spécifiques, ce qui p
 | user_id | bigint, foreign key | Identifiant de l'utilisateur collaborateur (clé étrangère vers `users.id`). Un employé doit être un utilisateur existant. |
 | role | enum | Rôle du collaborateur dans le restaurant (manager, cashier, kitchen, delivery_manager, staff). Définit ses responsabilités principales. |
 | permissions | json, nullable | Permissions spécifiques supplémentaires accordées au collaborateur en complément de son rôle. Stocké au format JSON pour gérer des autorisations fines. |
-| invited_by | bigint, foreign key | Identifiant de l'utilisateur ayant invité le collaborateur (clé étrangère vers `users.id`). Permet de tracer qui a ajouté chaque employé. |
+| invited_by | bigint, foreign key, nullable | Identifiant de l'utilisateur ayant invité le collaborateur (clé étrangère vers `users.id`). Cet utilisateur doit être le propriétaire du restaurant ou un collaborateur disposant de la permission d'inviter d'autres employés. Ce champ est nullable uniquement si l'association a été créée directement par un administrateur de la plateforme. |
 | invited_at | timestamp | Date d'envoi de l'invitation au collaborateur |
 | accepted_at | timestamp, nullable | Date à laquelle le collaborateur a accepté l'invitation. L'accès n'est possible qu'après acceptation. |
 | status | enum | Statut de la collaboration (pending, active, suspended, revoked) |
@@ -428,9 +428,10 @@ Les règles suivantes devront être respectées :
 - Un collaborateur appartient obligatoirement à un restaurant (clé étrangère `restaurant_id` non nullable).
 - Un collaborateur correspond obligatoirement à un utilisateur existant (clé étrangère `user_id` non nullable).
 - Un propriétaire (`restaurant_owner`) ne doit jamais apparaître comme employé de son propre restaurant dans cette table.
-- Un même utilisateur ne peut apparaître qu'une seule fois pour un même restaurant (contrainte d'unicité sur la paire `restaurant_id`, `user_id`).
+- Un utilisateur ayant le rôle global `restaurant_employee` peut être associé à plusieurs restaurants. Il ne peut toutefois apparaître qu'une seule fois pour un même restaurant grâce à la contrainte d'unicité sur `(restaurant_id, user_id)`. Son rôle métier dans chaque restaurant est défini par le champ `role` de cette table.
+- Seul le statut `active` autorise l'accès au back-office du restaurant. Les statuts `pending`, `suspended` et `revoked` doivent bloquer cet accès.
 - Une invitation doit être acceptée (`accepted_at` renseigné) avant que le collaborateur puisse accéder au back-office.
-- Un collaborateur révoqué (`status = revoked`) ou supprimé logiquement ne peut plus accéder au back-office.
+- Un collaborateur révoqué (`status = revoked`) ou supprimé logiquement ne peut plus accéder au back-office. Ses sessions et accès actifs doivent être invalidés côté Laravel.
 - Un collaborateur suspendu (`status = suspended`) ne peut pas accéder au back-office tant que la suspension n'est pas levée par le propriétaire.
 - Les permissions attribuées doivent toujours être compatibles avec le rôle défini. Par exemple, un employé avec le rôle `kitchen` ne peut pas recevoir la permission de gérer les paiements.
 
