@@ -41,7 +41,9 @@ MySQL reste la source principale des données métier.
 
 La table `users` est la table centrale de FlavorWay. Elle contient tous les utilisateurs de la plateforme, quel que soit leur rôle ou leur type de compte.
 
-Chaque ligne de cette table représente une personne physique ou morale inscrite sur la plateforme.
+Chaque ligne de cette table représente un compte utilisateur enregistré sur la plateforme, qu'il s'agisse d'un client, d'un restaurateur, d'un employé de restaurant, d'un livreur, d'un membre du support ou d'un administrateur.
+
+Les informations propres aux restaurants, aux commandes, aux paiements ou aux livraisons sont stockées dans leurs tables respectives et reliées à cette table par des relations.
 
 ## Rôles pris en charge
 
@@ -79,8 +81,6 @@ Exemple :
 | last_name | string | Nom de famille de l'utilisateur |
 | email | string, unique | Adresse e-mail de connexion |
 | phone | string, nullable | Numéro de téléphone |
-| password | string, nullable | Mot de passe local hashé. Ce champ peut rester null lorsque l'authentification est entièrement gérée par Firebase Authentication. |
-| avatar | string, nullable | URL ou chemin de la photo de profil |
 | role | enum | Rôle de l'utilisateur (client, restaurant_owner, restaurant_employee, driver, support, admin) |
 | status | enum | Statut du compte (active, pending, suspended, disabled) |
 | language | string, défaut 'fr' | Langue préférée de l'utilisateur |
