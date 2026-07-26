@@ -81,6 +81,8 @@ Exemple :
 | last_name | string | Nom de famille de l'utilisateur |
 | email | string, unique | Adresse e-mail de connexion |
 | phone | string, nullable | Numéro de téléphone |
+| password | string, nullable | Mot de passe local hashé. Ce champ peut rester null lorsque l'authentification est entièrement gérée par Firebase Authentication. |
+| avatar | string, nullable | URL ou chemin de la photo de profil |
 | role | enum | Rôle de l'utilisateur (client, restaurant_owner, restaurant_employee, driver, support, admin) |
 | status | enum | Statut du compte (active, pending, suspended, disabled) |
 | language | string, défaut 'fr' | Langue préférée de l'utilisateur |
