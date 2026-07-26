@@ -150,3 +150,78 @@ La table `users` est la base de toute la plateforme FlavorWay.
 Elle centralise les informations essentielles de chaque personne inscrite et permet de relier l'ensemble des fonctionnalités : commandes, livraisons, restaurants, paiements, avis et notifications.
 
 Sa conception doit être rigoureuse afin de garantir la cohérence des données à travers tous les modules de l'application.
+
+---
+
+# Table : user_addresses
+
+## Présentation
+
+La table `user_addresses` permet à chaque utilisateur d'enregistrer plusieurs adresses de livraison.
+
+Les informations relatives aux adresses sont stockées dans une table séparée de la table `users` afin de rendre la plateforme plus flexible et évolutive. Cette séparation permet à un utilisateur de gérer librement ses adresses sans impacter la structure centrale des comptes, et d'associer plusieurs points de livraison à un même client.
+
+## Structure de la table
+
+| Champ | Type | Description |
+|---|---|---|
+| id | bigint, auto-incrément | Identifiant unique de l'adresse |
+| user_id | bigint, foreign key | Identifiant de l'utilisateur propriétaire de l'adresse (clé étrangère vers `users.id`) |
+| label | string, nullable | Libellé personnel de l'adresse (ex : Maison, Bureau, Chez un proche) |
+| recipient_name | string | Nom du destinataire pour la livraison |
+| recipient_phone | string | Numéro de téléphone du destinataire |
+| address_line_1 | string | Adresse principale (numéro, rue, quartier) |
+| address_line_2 | string, nullable | Complément d'adresse (étage, appartement, point de repère) |
+| postal_code | string, nullable | Code postal de la localité |
+| city | string | Ville de livraison |
+| region | string, nullable | Région ou département |
+| country | string | Pays de l'adresse |
+| latitude | decimal(10,7), nullable | Latitude pour le géocodage et l'affichage sur la carte |
+| longitude | decimal(10,7), nullable | Longitude pour le géocodage et l'affichage sur la carte |
+| delivery_instructions | text, nullable | Instructions particulières pour le livreur (code d'accès, sonnette, étage) |
+| is_default | boolean, défaut false | Indique si cette adresse est l'adresse par défaut de l'utilisateur |
+| is_active | boolean, défaut true | Indique si l'adresse est toujours active et utilisable |
+| created_at | timestamp | Date de création de l'adresse |
+| updated_at | timestamp | Date de dernière modification |
+| deleted_at | timestamp, nullable | Date de suppression logique (Soft Delete Laravel) |
+
+## Index
+
+Les index suivants devront être créés afin d'optimiser les performances :
+
+- Index sur `user_id` pour accélérer la récupération des adresses d'un utilisateur
+- Index composé sur `(user_id, is_default)` pour vérifier rapidement l'existence d'une adresse par défaut
+- Index sur `is_active` pour filtrer les adresses actives
+- Index sur `city` pour les recherches géographiques
+
+Un index spatial ou une stratégie géographique adaptée (comme le calcul de distance basé sur les coordonnées) pourra être ajouté ultérieurement selon le moteur MySQL utilisé et les besoins réels de l'application en matière de recherches de proximité.
+
+## Contraintes
+
+Les règles suivantes devront être respectées :
+
+- Une adresse appartient obligatoirement à un utilisateur (clé étrangère `user_id` non nullable).
+- Un utilisateur peut enregistrer plusieurs adresses.
+- Un utilisateur ne peut avoir qu'une seule adresse active définie comme adresse par défaut. Lorsqu'une nouvelle adresse devient l'adresse par défaut, toutes les autres adresses du même utilisateur doivent automatiquement passer à `is_default = false`. Cette opération devra être gérée par Laravel dans une transaction afin d'éviter plusieurs adresses par défaut en cas de demandes simultanées.
+- Une adresse inactive (`is_active = false`) ou supprimée logiquement (`deleted_at` renseigné) ne peut pas rester définie comme adresse par défaut.
+- Une adresse supprimée logiquement ne doit plus être proposée ni utilisée pour les livraisons.
+- Le champ `recipient_name` est obligatoire afin de garantir une livraison nominative.
+- Le champ `address_line_1` est obligatoire pour assurer une localisation minimale.
+- `latitude` et `longitude` doivent être soit toutes les deux renseignées, soit toutes les deux nulles.
+- La latitude doit être comprise entre -90 et 90.
+- La longitude doit être comprise entre -180 et 180.
+
+## Relations
+
+La table `user_addresses` est reliée aux tables suivantes :
+
+| Table | Type de relation | Description |
+|---|---|---|
+| users | Une adresse appartient à un seul utilisateur | Chaque adresse est liée à un compte utilisateur via la clé étrangère `user_id` |
+| orders | Une adresse peut être sélectionnée lors de la création d'une commande | La table `orders` devra conserver une copie figée des informations de livraison utilisées au moment de la commande. La modification ou la suppression ultérieure de l'adresse dans `user_addresses` ne doit jamais modifier l'historique d'une commande déjà passée. |
+
+## Conclusion
+
+La table `user_addresses` est indispensable au bon fonctionnement des livraisons sur FlavorWay.
+
+Elle permet aux clients d'enregistrer et de gérer facilement leurs lieux de livraison, d'associer des instructions précises pour les livreurs, et de faciliter l'intégration future de fonctionnalités avancées telles que la géolocalisation en temps réel, la suggestion d'adresses récentes ou la validation automatique des zones de livraison.
