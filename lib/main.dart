@@ -28,6 +28,7 @@ import 'screens/restaurant_owner/edit_menu_screen.dart';
 import 'screens/restaurant_owner/edit_restaurant_screen.dart';
 import 'screens/reservations_screen.dart';
 import 'screens/restaurant_owner/edit_gallery_screen.dart';
+import 'widgets/auth_gate.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -76,7 +77,10 @@ class FlavorWayApp extends StatelessWidget {
           ),
           initialRoute: '/',
           routes: {
-            '/': (context) => const WelcomePage(),
+            '/': (context) => const AuthGate(
+                  loginWidget: WelcomePage(),
+                  homeWidget: HomeScreen(),
+                ),
             '/login': (context) => const LoginScreen(),
             '/signup': (context) => const SignUpScreen(),
             '/home': (context) => const HomeScreen(),
