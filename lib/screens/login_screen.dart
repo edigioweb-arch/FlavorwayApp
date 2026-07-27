@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import '../services/user_auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -11,10 +11,73 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
+  bool _isLoading = false;
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   static const Color orangeFlavor = Color(0xFFF36A2D);
   static const Color violetFlavor = Color(0xFF4B1F5C);
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _login() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      _showError('Veuillez remplir tous les champs.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Utiliser signInWithProfileCheck qui :
+      //   1. Normalise l'email (trim + lowercase)
+      //   2. Appelle signInWithEmailAndPassword()
+      //   3. Récupère credential.user
+      //   4. Lit users/{uid} dans Firestore
+      //   5. Vérifie que le profil existe
+      //   6. Vérifie le status
+      //   7. Lance UserAuthException si problème
+      //   8. Ne fait AUCUNE navigation
+      await UserAuthService.instance.signInWithProfileCheck(
+        email: email,
+        password: password,
+      );
+
+      if (!mounted) return;
+
+      // AuthGate (toujours monté via home:) détecte authStateChanges()
+      // et bascule automatiquement vers HomeScreen.
+      //
+      // Il suffit de dépiler la route /login pour revenir à la racine
+      // où AuthGate affiche désormais HomeScreen.
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } on UserAuthException catch (e) {
+      if (!mounted) return;
+      _showError(e.message);
+    } catch (e) {
+      if (!mounted) return;
+      _showError(
+          'Impossible de se connecter. Vérifiez votre connexion réseau.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade700,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +124,7 @@ class _LoginScreenState extends State<LoginScreen> {
             height: 120,
             width: 120,
             decoration: const BoxDecoration(
-              color: Colors.white, // FOND DU LOGO PASSÉ EN BLANC
+              color: Colors.white,
               shape: BoxShape.circle,
             ),
             child: ClipOval(
@@ -150,70 +213,21 @@ class _LoginScreenState extends State<LoginScreen> {
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
         ),
-        onPressed: () async {
-          final email = _emailController.text.trim();
-          final password = _passwordController.text.trim();
-
-          if (email == 'admin@jolicoin.com' && password == '123456') {
-            Navigator.pushNamedAndRemoveUntil(
-              context,
-              '/restaurant-dashboard',
-              (route) => false,
-            );
-            return;
-          }
-
-          try {
-            await FirebaseAuth.instance.signInWithEmailAndPassword(
-              email: email,
-              password: password,
-            );
-
-            if (!mounted) return;
-
-            Navigator.pushNamedAndRemoveUntil(
-              context,
-              '/home',
-              (route) => false,
-            );
-          } on FirebaseAuthException catch (e) {
-            String message = "Impossible de se connecter.";
-
-            switch (e.code) {
-              case 'invalid-email':
-                message = "Adresse email invalide.";
-                break;
-              case 'user-not-found':
-              case 'wrong-password':
-              case 'invalid-credential':
-                message = "Email ou mot de passe incorrect.";
-                break;
-              case 'network-request-failed':
-                message = "Vérifiez votre connexion Internet.";
-                break;
-              case 'too-many-requests':
-                message = "Trop de tentatives. Réessayez plus tard.";
-                break;
-              default:
-                if (e.message != null) {
-                  message = e.message!;
-                }
-            }
-
-            if (!mounted) return;
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(message),
-              ),
-            );
-          }
-        },
-        child: const Text('Se connecter',
-            style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.white)),
+        onPressed: _isLoading ? null : _login,
+        child: _isLoading
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
+              )
+            : const Text('Se connecter',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white)),
       ),
     );
   }

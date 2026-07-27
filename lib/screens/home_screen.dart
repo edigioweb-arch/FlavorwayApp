@@ -3,13 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
-import '../services/cart_service.dart';
 import '../services/restaurant_service.dart';
 import '../services/notification_service.dart';
 import 'favorites_screen.dart';
 import 'orders_screen.dart';
 import 'profile_screen.dart';
-import 'chat_screen.dart';
 import 'messages_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -36,12 +34,10 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color pageBg = Color(0xFFFFFFFF);
   static const Color softGrey = Color(0xFFF5F4F8);
 
-  // Tu peux modifier tous les rayons ici.
   static const double buttonRadius = 90;
   static const double cardRadius = 12;
   static const double headerRadius = 12;
 
-  // Tu peux modifier les images ici, sans toucher au reste du code.
   static const String offerImage1 = 'assets/images/offer.png';
   static const String offerImage2 = 'assets/images/offer.png';
   static const String offerImage3 = 'assets/images/offer.png';
@@ -56,13 +52,6 @@ class _HomeScreenState extends State<HomeScreen> {
       'https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=500&q=80';
   static const String cuisinePizzaImage =
       'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=500&q=80';
-
-  static const String restaurantImage1 =
-      'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=900&q=80';
-  static const String restaurantImage2 =
-      'https://images.unsplash.com/photo-1517248135467-4c7ed9d42c77?w=900&q=80';
-  static const String restaurantImage3 =
-      'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=900&q=80';
 
   final List<Map<String, String>> promoCards = const [
     {
@@ -149,52 +138,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Widget _buildComingSoonPage({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 76,
-              height: 76,
-              decoration: BoxDecoration(
-                color: violetFlavor.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(buttonRadius),
-              ),
-              child: Icon(icon, color: violetFlavor, size: 34),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              title,
-              style: GoogleFonts.poppins(
-                color: const Color(0xFF1B1B1B),
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(
-                color: Colors.grey.shade600,
-                fontSize: 14,
-                height: 1.45,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildRestaurantsPage() {
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
@@ -208,145 +151,12 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildCuisineCategories(),
               _buildSectionTitle('Filtres', showSeeAll: false),
               _buildFilters(),
-              // _buildSearchSuggestions() removed here
             ],
           ),
         ),
         _buildRestaurantList(),
         const SliverToBoxAdapter(child: SizedBox(height: 96)),
       ],
-    );
-  }
-
-  Widget _buildMessagesPage() {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Messages',
-              style: GoogleFonts.poppins(
-                color: const Color(0xFF1B1B1B),
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Discutez avec les restaurants, les livreurs et le support FlavorWay.',
-              style: GoogleFonts.poppins(
-                color: Colors.grey.shade600,
-                fontSize: 14,
-                height: 1.45,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 22),
-            _messageTile(
-              icon: Icons.restaurant_rounded,
-              title: 'Chat restaurant',
-              subtitle:
-                  'Échangez avec un restaurant avant ou après une réservation.',
-              badge: 'Bientôt',
-            ),
-            _messageTile(
-              icon: Icons.delivery_dining_rounded,
-              title: 'Chat livreur',
-              subtitle: 'Suivez une livraison et contactez le livreur.',
-              badge: 'Bientôt',
-            ),
-            _messageTile(
-              icon: Icons.support_agent_rounded,
-              title: 'Support client',
-              subtitle: 'Besoin d’aide ? Contactez l’équipe FlavorWay.',
-              badge: 'Support',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _messageTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required String badge,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade100),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.045),
-            blurRadius: 16,
-            offset: const Offset(0, 7),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              color: violetFlavor.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(icon, color: violetFlavor, size: 25),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.poppins(
-                    color: const Color(0xFF1B1B1B),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.poppins(
-                    color: Colors.grey.shade600,
-                    fontSize: 12,
-                    height: 1.35,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: orangeFlavor.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(buttonRadius),
-            ),
-            child: Text(
-              badge,
-              style: GoogleFonts.poppins(
-                color: orangeFlavor,
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -371,7 +181,6 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildSectionTitle('Restaurants populaires',
                   showSeeAll: true, onTap: () => _onItemTapped(1)),
               _buildFilters(),
-              // _buildSearchSuggestions() removed here
             ],
           ),
         ),
@@ -835,7 +644,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Text(
                                     (promo['discount'] ?? '') == 'QR'
                                         ? 'Menu'
-                                        : 'Jusqu’à',
+                                        : 'Jusqu\'à',
                                     style: GoogleFonts.poppins(
                                       color: Colors.white.withOpacity(0.90),
                                       fontSize: 13,
@@ -1137,7 +946,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Aucun résultat pour "\$_searchQuery"',
+                          'Aucun résultat pour "$_searchQuery"',
                           style: GoogleFonts.poppins(
                             color: Colors.grey.shade600,
                             fontSize: 13,
@@ -1551,7 +1360,6 @@ class _HomeScreenState extends State<HomeScreen> {
         errorBuilder: (context, error, stackTrace) => _buildImageErrorCompact(),
       );
     }
-
     return Image.network(
       imagePath,
       width: 108,
@@ -1813,23 +1621,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _metaItem(IconData icon, String label) {
-    return Row(
-      children: [
-        Icon(icon, color: Colors.grey.shade500, size: 16),
-        const SizedBox(width: 3),
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            color: Colors.grey.shade600,
-            fontSize: 11,
-            fontWeight: FontWeight.w400,
-          ),
-        ),
-      ],
     );
   }
 

@@ -45,7 +45,7 @@ class _WelcomePageState extends State<WelcomePage> {
   }
 
   void _goToLogin() {
-    Navigator.pushReplacementNamed(context, '/login');
+    Navigator.pushNamed(context, '/login');
   }
 
   void _nextPage() {

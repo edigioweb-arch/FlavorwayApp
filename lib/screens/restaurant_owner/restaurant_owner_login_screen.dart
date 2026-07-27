@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../services/user_auth_service.dart';
 
 class RestaurantOwnerLoginScreen extends StatefulWidget {
   const RestaurantOwnerLoginScreen({super.key});
@@ -9,7 +10,8 @@ class RestaurantOwnerLoginScreen extends StatefulWidget {
       _RestaurantOwnerLoginScreenState();
 }
 
-class _RestaurantOwnerLoginScreenState extends State<RestaurantOwnerLoginScreen> {
+class _RestaurantOwnerLoginScreenState
+    extends State<RestaurantOwnerLoginScreen> {
   static const Color orangeFlavor = Color(0xFFF36A2D);
   static const Color violetFlavor = Color(0xFF4B1F5C);
   static const Color violetDark = Color(0xFF2A0D35);
@@ -19,6 +21,7 @@ class _RestaurantOwnerLoginScreenState extends State<RestaurantOwnerLoginScreen>
   final TextEditingController _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -27,18 +30,66 @@ class _RestaurantOwnerLoginScreenState extends State<RestaurantOwnerLoginScreen>
     super.dispose();
   }
 
-  void _loginOwner() {
+  Future<void> _loginOwner() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    if (email == 'admin@jolicoin.com' && password == '123456') {
-      Navigator.pushReplacementNamed(context, '/restaurant-dashboard');
+    if (email.isEmpty || password.isEmpty) {
+      _showError('Veuillez remplir tous les champs.');
       return;
     }
 
+    setState(() => _isLoading = true);
+
+    try {
+      // Connexion réelle Firebase + vérification Firestore
+      await UserAuthService.instance.signInWithProfileCheck(
+        email: email,
+        password: password,
+      );
+
+      if (!mounted) return;
+
+      // Vérification du rôle restaurant_owner dans Firestore
+      final user = UserAuthService.instance.currentUser;
+      if (user != null) {
+        final profile =
+            await UserAuthService.instance.getUserProfile(uid: user.uid);
+        final data = profile.data();
+
+        if (data != null && data['role'] == 'restaurant_owner') {
+          // Bon rôle → redirection vers le dashboard
+          // AuthGate gère déjà la connexion, mais on force la route
+          // car le dashboard restaurateur n'est pas AuthGate
+          Navigator.pushReplacementNamed(context, '/restaurant-dashboard');
+          return;
+        }
+
+        // Mauvais rôle ou pas de rôle → déconnexion
+        await UserAuthService.instance.signOut();
+        if (!mounted) return;
+        _showError(
+          'Ce compte n\'est pas un compte restaurateur. '
+          'Utilisez l\'écran de connexion client.',
+        );
+      }
+    } on UserAuthException catch (e) {
+      if (!mounted) return;
+      _showError(e.message);
+    } catch (e) {
+      if (!mounted) return;
+      _showError(
+          'Impossible de se connecter. Vérifiez votre connexion réseau.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Identifiants restaurateur incorrects'),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade700,
       ),
     );
   }
@@ -125,7 +176,7 @@ class _RestaurantOwnerLoginScreenState extends State<RestaurantOwnerLoginScreen>
                 width: double.infinity,
                 height: 58,
                 child: ElevatedButton(
-                  onPressed: _loginOwner,
+                  onPressed: _isLoading ? null : _loginOwner,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: orangeFlavor,
                     elevation: 0,
@@ -133,26 +184,23 @@ class _RestaurantOwnerLoginScreenState extends State<RestaurantOwnerLoginScreen>
                       borderRadius: BorderRadius.circular(90),
                     ),
                   ),
-                  child: Text(
-                    'Se connecter',
-                    style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Center(
-                child: Text(
-                  'Compte test : admin@jolicoin.com / 123456',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                    color: Colors.grey.shade500,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(
+                          'Se connecter',
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                 ),
               ),
             ],
@@ -197,7 +245,8 @@ class _RestaurantOwnerLoginScreenState extends State<RestaurantOwnerLoginScreen>
             fontSize: 13,
             fontWeight: FontWeight.w500,
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
         ),
       ),
     );
@@ -251,7 +300,8 @@ class _RestaurantOwnerLoginScreenState extends State<RestaurantOwnerLoginScreen>
             fontSize: 13,
             fontWeight: FontWeight.w500,
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
         ),
       ),
     );

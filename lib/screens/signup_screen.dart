@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../services/user_auth_service.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -20,6 +19,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
+  final TextEditingController _confirmPassController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _cityController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
@@ -29,9 +29,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   bool _acceptTerms = false;
   bool _isObscure = true;
+  bool _isConfirmObscure = true;
   bool _isLoading = false;
   String? _selectedCountry;
   String? _usernameError;
+  String? _confirmPasswordError;
 
   final List<String> _existingUsernames = ['jean242', 'flavor_user', 'admin'];
   final List<String> _countries = [
@@ -56,6 +58,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _usernameController.dispose();
     _emailController.dispose();
     _passController.dispose();
+    _confirmPassController.dispose();
     _phoneController.dispose();
     _cityController.dispose();
     _addressController.dispose();
@@ -65,18 +68,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
-  // --- LOGIQUE ---
-
   bool _isStepValid() {
     if (_userRole == null) return false;
 
     if (_userRole == 'client') {
       if (_currentStep == 0) {
+        final passwordValid = _passController.text.length >= 6;
+        final confirmValid =
+            _confirmPassController.text == _passController.text &&
+                _confirmPassController.text.isNotEmpty;
         return _fullNameController.text.trim().isNotEmpty &&
             _usernameController.text.trim().isNotEmpty &&
             _usernameError == null &&
             _emailController.text.trim().contains('@') &&
-            _passController.text.length >= 6;
+            passwordValid &&
+            confirmValid;
       }
 
       return _selectedCountry != null &&
@@ -97,33 +103,67 @@ class _SignUpScreenState extends State<SignUpScreen> {
           _licenseController.text.trim().isNotEmpty;
     }
 
+    final passwordValid = _passController.text.length >= 6;
+    final confirmValid = _confirmPassController.text == _passController.text &&
+        _confirmPassController.text.isNotEmpty;
     return _selectedCountry != null &&
         _cityController.text.trim().isNotEmpty &&
         _addressController.text.trim().isNotEmpty &&
-        _passController.text.length >= 6 &&
+        passwordValid &&
+        confirmValid &&
         _acceptTerms;
+  }
+
+  void _validateConfirmPassword(String value) {
+    setState(() {
+      if (value.isEmpty) {
+        _confirmPasswordError = null;
+      } else if (value != _passController.text) {
+        _confirmPasswordError = 'Les mots de passe ne correspondent pas.';
+      } else {
+        _confirmPasswordError = null;
+      }
+    });
   }
 
   Future<void> _goNext() async {
     if (_isLoading || !_isStepValid()) return;
 
+    // Vérification finale de la confirmation du mot de passe avant soumission
     final bool isLast = (_userRole == 'client' && _currentStep == 1) ||
         (_userRole == 'restaurant' && _currentStep == 2);
 
-    if (!isLast) {
-      await _pageController.nextPage(
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeInOut,
-      );
-
-      if (mounted) {
-        setState(() => _currentStep++);
+    if (isLast) {
+      // Vérifier que les mots de passe correspondent
+      if (_passController.text != _confirmPassController.text) {
+        setState(() {
+          _confirmPasswordError = 'Les mots de passe ne correspondent pas.';
+        });
+        return;
       }
-
+      // Vérifier que le mot de passe fait au moins 6 caractères
+      if (_passController.text.length < 6) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('Le mot de passe doit contenir au moins 6 caractères.'),
+          ),
+        );
+        return;
+      }
+      await _createAccount();
       return;
     }
 
-    await _createAccount();
+    await _pageController.nextPage(
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeInOut,
+    );
+
+    if (mounted) {
+      setState(() => _currentStep++);
+    }
   }
 
   Future<void> _createAccount() async {
@@ -131,139 +171,73 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     setState(() => _isLoading = true);
 
-    User? createdUser;
-
     try {
-      final UserCredential credential =
-          await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passController.text,
-      );
+      final String fullName = _fullNameController.text.trim();
+      final List<String> nameParts = fullName.split(' ');
+      final String firstName = nameParts.first;
+      final String lastName =
+          nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
 
-      createdUser = credential.user;
-
-      if (createdUser == null) {
-        throw FirebaseAuthException(
-          code: 'user-not-created',
-          message: 'La création du compte a échoué.',
-        );
-      }
-
-      await createdUser.updateDisplayName(
-        _fullNameController.text.trim(),
-      );
-
-      final Map<String, dynamic> userData = {
-        'uid': createdUser.uid,
-        'fullName': _fullNameController.text.trim(),
-        'email': _emailController.text.trim().toLowerCase(),
+      final Map<String, dynamic> profileData = {
+        'firstName': firstName,
+        'lastName': lastName,
+        'fullName': fullName,
         'phone': _phoneController.text.trim(),
         'role': _userRole,
         'country': _selectedCountry,
         'city': _cityController.text.trim(),
         'address': _addressController.text.trim(),
         'status': _userRole == 'restaurant' ? 'pending' : 'active',
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
       };
 
       if (_userRole == 'client') {
-        userData['username'] = _usernameController.text.trim().toLowerCase();
+        profileData['username'] = _usernameController.text.trim().toLowerCase();
       }
 
       if (_userRole == 'restaurant') {
-        userData.addAll({
+        profileData.addAll({
           'restaurantName': _resNameController.text.trim(),
           'cuisineType': _cuisineTypeController.text.trim(),
           'licenseNumber': _licenseController.text.trim(),
         });
       }
 
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(createdUser.uid)
-          .set(userData);
+      // Utiliser UserAuthService.signUp() qui crée Firebase Auth + Firestore
+      await UserAuthService.instance.signUp(
+        email: _emailController.text.trim(),
+        password: _passController.text,
+        profileData: profileData,
+      );
 
       if (!mounted) return;
 
-      final bool isRestaurant = _userRole == 'restaurant';
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isRestaurant
-                ? 'Compte restaurateur créé. Il est en attente de validation.'
-                : 'Compte client créé avec succès.',
+      // Ne pas naviguer manuellement — AuthGate détecte la session Firebase
+      // et redirige automatiquement vers HomeScreen.
+      if (_userRole == 'restaurant') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Compte restaurateur créé. Il est en attente de validation.',
+            ),
           ),
-        ),
-      );
-
-      Navigator.pushReplacementNamed(
-        context,
-        isRestaurant ? '/restaurant-owner-login' : '/login',
-      );
-    } on FirebaseAuthException catch (error) {
-      if (!mounted) return;
-
-      String message = 'Impossible de créer le compte.';
-
-      switch (error.code) {
-        case 'email-already-in-use':
-          message = 'Cette adresse e-mail est déjà utilisée.';
-          break;
-
-        case 'invalid-email':
-          message = 'L’adresse e-mail n’est pas valide.';
-          break;
-
-        case 'weak-password':
-          message = 'Le mot de passe doit contenir au moins 6 caractères.';
-          break;
-
-        case 'network-request-failed':
-          message = 'Vérifiez votre connexion Internet puis réessayez.';
-          break;
-
-        default:
-          if (error.message != null && error.message!.isNotEmpty) {
-            message = error.message!;
-          }
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
-    } on FirebaseException catch (error) {
-      if (createdUser != null) {
-        try {
-          await createdUser.delete();
-        } catch (_) {}
-      }
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            error.message ??
-                'Le profil n’a pas pu être enregistré dans Firestore.',
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Compte client créé avec succès.'),
           ),
-        ),
-      );
-    } catch (_) {
-      if (createdUser != null) {
-        try {
-          await createdUser.delete();
-        } catch (_) {}
+        );
       }
-
+    } on UserAuthException catch (e) {
       if (!mounted) return;
-
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Une erreur inattendue est survenue.',
-          ),
+          content: Text('Une erreur inattendue est survenue.'),
         ),
       );
     } finally {
@@ -291,15 +265,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-  // --- INTERFACE PRINCIPALE ---
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: violetFlavor,
       body: SafeArea(
         child: Column(
-          // Changement : Utilisation d'une Column pour fixer le bouton en bas
           children: [
             Expanded(
               child: SingleChildScrollView(
@@ -322,7 +293,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     else ...[
                       _buildProgressIndicator(),
                       const SizedBox(height: 20),
-                      // On donne une hauteur suffisante au PageView
                       SizedBox(
                         height: _userRole == 'restaurant' ? 500 : 420,
                         child: PageView(
@@ -345,14 +315,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ),
               ),
             ),
-
-            // ZONE FIXE EN BAS (Visible en permanence)
             if (_userRole != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(28, 10, 28, 10),
                 child: _buildBottomButton(),
               ),
-
             Padding(
               padding: const EdgeInsets.only(bottom: 15),
               child: _buildFooterLogin(),
@@ -362,8 +329,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       ),
     );
   }
-
-  // --- COMPOSANTS ---
 
   Widget _buildBottomButton() {
     final bool isLast = (_userRole == 'client' && _currentStep == 1) ||
@@ -410,7 +375,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  // Widgets de contenu (Steps)
   Widget _stepClient1() => Column(children: [
         _buildInputField(
             hint: 'Nom complet',
@@ -434,7 +398,29 @@ class _SignUpScreenState extends State<SignUpScreen> {
             icon: Icons.email_outlined,
             controller: _emailController),
         const SizedBox(height: 15),
-        _buildPasswordField(),
+        _buildPasswordField(
+          controller: _passController,
+          hint: 'Mot de passe',
+          isObscure: _isObscure,
+          onToggleObscure: () => setState(() => _isObscure = !_isObscure),
+          onChanged: (v) {
+            // Re-valider la confirmation si elle a déjà été saisie
+            if (_confirmPassController.text.isNotEmpty) {
+              _validateConfirmPassword(_confirmPassController.text);
+            }
+            setState(() {});
+          },
+        ),
+        const SizedBox(height: 15),
+        _buildPasswordField(
+          controller: _confirmPassController,
+          hint: 'Confirmer le mot de passe',
+          isObscure: _isConfirmObscure,
+          onToggleObscure: () =>
+              setState(() => _isConfirmObscure = !_isConfirmObscure),
+          onChanged: _validateConfirmPassword,
+          errorText: _confirmPasswordError,
+        ),
       ]);
 
   Widget _stepResto1() => Column(children: [
@@ -489,7 +475,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             icon: Icons.location_on_rounded,
             title: 'Localisation & accès',
             subtitle:
-                'Ajoutez le pays, la ville, l’adresse et le mot de passe de l’espace restaurateur.',
+                'Ajoutez le pays, la ville, l\'adresse et le mot de passe de l\'espace restaurateur.',
           ),
           const SizedBox(height: 14),
         ],
@@ -506,7 +492,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
             controller: _addressController),
         if (isRestaurant) ...[
           const SizedBox(height: 12),
-          _buildPasswordField()
+          _buildPasswordField(
+            controller: _passController,
+            hint: 'Mot de passe',
+            isObscure: _isObscure,
+            onToggleObscure: () => setState(() => _isObscure = !_isObscure),
+            onChanged: (v) {
+              if (_confirmPassController.text.isNotEmpty) {
+                _validateConfirmPassword(_confirmPassController.text);
+              }
+              setState(() {});
+            },
+          ),
+          const SizedBox(height: 12),
+          _buildPasswordField(
+            controller: _confirmPassController,
+            hint: 'Confirmer le mot de passe',
+            isObscure: _isConfirmObscure,
+            onToggleObscure: () =>
+                setState(() => _isConfirmObscure = !_isConfirmObscure),
+            onChanged: _validateConfirmPassword,
+            errorText: _confirmPasswordError,
+          ),
         ],
         const SizedBox(height: 6),
         Row(children: [
@@ -578,14 +585,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  // --- UI HELPERS ---
-
-  Widget _buildInputField(
-      {required String hint,
-      required IconData icon,
-      TextEditingController? controller,
-      String? errorText,
-      Function(String)? onChanged}) {
+  Widget _buildInputField({
+    required String hint,
+    required IconData icon,
+    TextEditingController? controller,
+    String? errorText,
+    Function(String)? onChanged,
+  }) {
     return TextField(
       controller: controller,
       onChanged: (v) {
@@ -623,18 +629,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildPasswordField() {
+  Widget _buildPasswordField({
+    required TextEditingController controller,
+    required String hint,
+    required bool isObscure,
+    required VoidCallback onToggleObscure,
+    Function(String)? onChanged,
+    String? errorText,
+  }) {
     return TextField(
-      controller: _passController,
-      obscureText: _isObscure,
-      onChanged: (v) => setState(() {}),
+      controller: controller,
+      obscureText: isObscure,
+      onChanged: (v) {
+        if (onChanged != null) onChanged(v);
+      },
       style: GoogleFonts.poppins(
         color: violetDark,
         fontSize: 15,
         fontWeight: FontWeight.w600,
       ),
       decoration: InputDecoration(
-        hintText: 'Mot de passe',
+        hintText: hint,
         hintStyle: GoogleFonts.poppins(
           color: Colors.grey.shade500,
           fontSize: 14,
@@ -642,9 +657,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
         ),
         prefixIcon: const Icon(Icons.lock_outline, color: violetFlavor),
         suffixIcon: IconButton(
-            icon: Icon(_isObscure ? Icons.visibility_off : Icons.visibility,
+            icon: Icon(isObscure ? Icons.visibility_off : Icons.visibility,
                 color: Colors.grey.shade500),
-            onPressed: () => setState(() => _isObscure = !_isObscure)),
+            onPressed: onToggleObscure),
+        errorText: errorText,
         filled: true,
         fillColor: Colors.white,
         contentPadding:

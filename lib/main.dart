@@ -75,12 +75,21 @@ class FlavorWayApp extends StatelessWidget {
             primarySwatch: Colors.purple,
             useMaterial3: true,
           ),
-          initialRoute: '/',
+
+          // AuthGate est l'écran racine permanent.
+          // Il écoute authStateChanges() et décide en permanence
+          // quel écran afficher : loginWidget (déconnecté) ou
+          // homeWidget (connecté).
+          // Les routes nommées sont utilisées pour la navigation
+          // depuis les écrans connectés.
+          home: const AuthGate(
+            loginWidget: WelcomePage(),
+            homeWidget: HomeScreen(),
+          ),
+
           routes: {
-            '/': (context) => const AuthGate(
-                  loginWidget: WelcomePage(),
-                  homeWidget: HomeScreen(),
-                ),
+            // Les routes nommées permettent la navigation depuis
+            // les écrans connectés (HomeScreen etc.)
             '/login': (context) => const LoginScreen(),
             '/signup': (context) => const SignUpScreen(),
             '/home': (context) => const HomeScreen(),

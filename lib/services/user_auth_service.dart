@@ -48,17 +48,6 @@ class UserAuthService extends ChangeNotifier {
   ///
   /// Utilisez ce stream dans vos widgets pour réagir automatiquement
   /// à la connexion ou à la déconnexion d'un utilisateur.
-  ///
-  /// Exemple :
-  /// ```dart
-  /// UserAuthService.instance.authStateChanges().listen((User? user) {
-  ///   if (user == null) {
-  ///     // rediriger vers la connexion
-  ///   } else {
-  ///     // rediriger vers l'accueil
-  ///   }
-  /// });
-  /// ```
   Stream<User?> authStateChanges() => _auth.authStateChanges();
 
   // ---------------------------------------------------------------------------
@@ -66,10 +55,6 @@ class UserAuthService extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   /// Connecte un utilisateur avec son adresse e-mail et son mot de passe.
-  ///
-  /// Lance une [UserAuthException] si la connexion échoue, avec un message
-  /// compréhensible expliquant la cause (email invalide, mot de passe
-  /// incorrect, compte désactivé, problème réseau, etc.).
   Future<UserCredential> signIn({
     required String email,
     required String password,
@@ -90,34 +75,96 @@ class UserAuthService extends ChangeNotifier {
   }
 
   /// Crée un nouveau compte utilisateur avec une adresse e-mail et un mot
-  /// de passe.
+  /// de passe, puis crée le profil Firestore dans users/{uid}.
   ///
-  /// Lance une [UserAuthException] si la création échoue, par exemple si
-  /// l'adresse e-mail est déjà utilisée ou si le mot de passe est trop faible.
-  Future<UserCredential> signUp({
+  /// [profileData] doit contenir les champs du profil (firstName, lastName,
+  /// phone, role, status, etc.). Les champs uid, email, createdAt et updatedAt
+  /// sont ajoutés automatiquement.
+  ///
+  /// En cas d'échec Firestore après la création Firebase, le compte Firebase
+  /// est supprimé pour éviter les orphelins.
+  Future<void> signUp({
     required String email,
     required String password,
+    required Map<String, dynamic> profileData,
   }) async {
+    User? createdUser;
+
     try {
+      // 1. Normalisation de l'email
+      final normalizedEmail = email.trim().toLowerCase();
+
+      // 2. Création du compte Firebase Authentication
       final credential = await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
+        email: normalizedEmail,
         password: password,
       );
-      return credential;
+
+      createdUser = credential.user;
+
+      if (createdUser == null) {
+        throw UserAuthException(
+          message: 'La création du compte a échoué. Veuillez réessayer.',
+        );
+      }
+
+      // 3. Création du profil Firestore avec le vrai UID Firebase
+      //    Utilise set() sur doc(uid) pour éviter les doublons
+      await _usersCollection.doc(createdUser.uid).set({
+        'uid': createdUser.uid,
+        'email': normalizedEmail,
+        ...profileData,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // 4. Mettre à jour le displayName Firebase si firstName/lastName fournis
+      if (profileData['firstName'] != null || profileData['lastName'] != null) {
+        final displayName = [
+          profileData['firstName'] ?? '',
+          profileData['lastName'] ?? '',
+        ].where((n) => n.isNotEmpty).join(' ').trim();
+
+        if (displayName.isNotEmpty) {
+          await createdUser.updateDisplayName(displayName);
+        }
+      }
+
+      // Note : Ne pas naviguer manuellement. Firebase connecte
+      // automatiquement l'utilisateur après signUp, et AuthGate réagit
+      // à authStateChanges() pour rediriger.
+      notifyListeners();
     } on FirebaseAuthException catch (e) {
+      // Nettoyage : supprimer le compte Firebase si la création échoue
+      if (createdUser != null) {
+        try {
+          await createdUser.delete();
+        } catch (_) {}
+      }
       throw _convertAuthException(e);
-    } catch (e) {
+    } on FirebaseException catch (e) {
+      // Échec Firestore : nettoyer le compte Firebase
+      if (createdUser != null) {
+        try {
+          await createdUser.delete();
+        } catch (_) {}
+      }
       throw UserAuthException(
-        message:
-            'Impossible de créer le compte. Vérifiez votre connexion réseau.',
+        message: e.message ?? 'Impossible de créer le profil utilisateur.',
+      );
+    } catch (e) {
+      if (createdUser != null) {
+        try {
+          await createdUser.delete();
+        } catch (_) {}
+      }
+      throw UserAuthException(
+        message: 'Une erreur inattendue est survenue lors de l\'inscription.',
       );
     }
   }
 
   /// Déconnecte l'utilisateur actuel.
-  ///
-  /// Après cette méthode, [currentUser] retourne null et le stream
-  /// [authStateChanges] émet un événement avec null.
   Future<void> signOut() async {
     await _auth.signOut();
     notifyListeners();
@@ -129,9 +176,6 @@ class UserAuthService extends ChangeNotifier {
 
   /// Envoie un e-mail de réinitialisation de mot de passe à l'adresse
   /// indiquée.
-  ///
-  /// Lance une [UserAuthException] si l'adresse e-mail est invalide ou
-  /// si l'utilisateur n'existe pas.
   Future<void> sendPasswordResetEmail({
     required String email,
   }) async {
@@ -148,11 +192,6 @@ class UserAuthService extends ChangeNotifier {
   }
 
   /// Met à jour le mot de passe de l'utilisateur actuellement connecté.
-  ///
-  /// Nécessite que l'utilisateur soit connecté ([currentUser] non null).
-  /// Lance une [UserAuthException] si l'utilisateur n'est pas connecté,
-  /// si le nouveau mot de passe est trop faible, ou si la session a expiré
-  /// (l'utilisateur doit alors se reconnecter).
   Future<void> updatePassword({
     required String newPassword,
   }) async {
@@ -181,9 +220,6 @@ class UserAuthService extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   /// Recharge les données de l'utilisateur actuel depuis Firebase.
-  ///
-  /// Utile pour rafraîchir les informations comme l'adresse e-mail
-  /// vérifiée ou le nom d'affichage après une modification.
   Future<void> reloadUser() async {
     final user = _auth.currentUser;
 
@@ -206,10 +242,6 @@ class UserAuthService extends ChangeNotifier {
   }
 
   /// Supprime le compte de l'utilisateur actuellement connecté.
-  ///
-  /// Action irréversible. Le compte est définitivement supprimé de
-  /// Firebase Authentication. Le profil Firestore devra être supprimé
-  /// séparément si nécessaire.
   Future<void> deleteAccount() async {
     final user = _auth.currentUser;
 
@@ -232,21 +264,14 @@ class UserAuthService extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // Profil Firestore (méthodes préparées)
+  // Profil Firestore (méthodes de base)
   // ---------------------------------------------------------------------------
 
-  /// Collection Firestore utilisée pour les profils utilisateurs.
   CollectionReference<Map<String, dynamic>> get _usersCollection =>
       _firestore.collection('users');
 
   /// Crée un document de profil dans Firestore pour l'utilisateur
   /// identifié par [uid].
-  ///
-  /// Les [data] doivent contenir les informations du profil
-  /// (nom, email, rôle, etc.).
-  ///
-  /// Cette méthode est préparée pour une utilisation ultérieure dans
-  /// les écrans d'inscription et de profil.
   Future<void> createUserProfile({
     required String uid,
     required Map<String, dynamic> data,
@@ -265,12 +290,6 @@ class UserAuthService extends ChangeNotifier {
   }
 
   /// Récupère le profil Firestore d'un utilisateur à partir de son [uid].
-  ///
-  /// Retourne un [DocumentSnapshot] contenant les données du profil,
-  /// ou null si le document n'existe pas.
-  ///
-  /// Cette méthode est préparée pour une utilisation ultérieure dans
-  /// les écrans de profil et de tableau de bord.
   Future<DocumentSnapshot<Map<String, dynamic>>> getUserProfile({
     required String uid,
   }) async {
@@ -285,11 +304,6 @@ class UserAuthService extends ChangeNotifier {
 
   /// Met à jour partiellement ou totalement le profil Firestore d'un
   /// utilisateur.
-  ///
-  /// Seuls les champs présents dans [data] seront modifiés.
-  ///
-  /// Cette méthode est préparée pour une utilisation ultérieure dans
-  /// les écrans d'édition de profil.
   Future<void> updateUserProfile({
     required String uid,
     required Map<String, dynamic> data,
@@ -303,6 +317,215 @@ class UserAuthService extends ChangeNotifier {
       throw UserAuthException(
         message: 'Impossible de mettre à jour le profil utilisateur.',
       );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Inscription complète : Firebase Auth + Firestore
+  // ---------------------------------------------------------------------------
+
+  /// Crée un compte Firebase Authentication et son profil Firestore
+  /// en une seule opération atomique.
+  ///
+  /// Les [profileData] doivent au minimum contenir :
+  ///   - firstName, lastName, phone, role, status
+  ///
+  /// En cas d'échec Firestore, le compte Firebase est supprimé pour
+  /// éviter les orphelins.
+  Future<void> signUpWithProfile({
+    required String email,
+    required String password,
+    required Map<String, dynamic> profileData,
+  }) async {
+    User? createdUser;
+
+    try {
+      // 1. Création du compte Firebase Authentication
+      final credential = await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+
+      createdUser = credential.user;
+
+      if (createdUser == null) {
+        throw UserAuthException(
+          message: 'La création du compte a échoué. Veuillez réessayer.',
+        );
+      }
+
+      // 2. Création du profil Firestore avec le vrai UID Firebase
+      await _usersCollection.doc(createdUser.uid).set({
+        'uid': createdUser.uid,
+        'email': email.trim().toLowerCase(),
+        ...profileData,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // 3. Mettre à jour le displayName Firebase si firstName/lastName fournis
+      if (profileData['firstName'] != null || profileData['lastName'] != null) {
+        final displayName = [
+          profileData['firstName'] ?? '',
+          profileData['lastName'] ?? '',
+        ].where((n) => n.isNotEmpty).join(' ').trim();
+
+        if (displayName.isNotEmpty) {
+          await createdUser.updateDisplayName(displayName);
+        }
+      }
+
+      // Note : Ne pas naviguer manuellement. Firebase connecte
+      // automatiquement l'utilisateur après signUp, et AuthGate réagit
+      // à authStateChanges() pour rediriger.
+    } on FirebaseAuthException catch (e) {
+      // Nettoyage : supprimer le compte Firebase si la création échoue
+      if (createdUser != null) {
+        try {
+          await createdUser.delete();
+        } catch (_) {}
+      }
+      throw _convertAuthException(e);
+    } on FirebaseException catch (e) {
+      // Échec Firestore : nettoyer le compte Firebase
+      if (createdUser != null) {
+        try {
+          await createdUser.delete();
+        } catch (_) {}
+      }
+      throw UserAuthException(
+        message: e.message ?? 'Impossible de créer le profil utilisateur.',
+      );
+    } catch (e) {
+      if (createdUser != null) {
+        try {
+          await createdUser.delete();
+        } catch (_) {}
+      }
+      throw UserAuthException(
+        message: 'Une erreur inattendue est survenue lors de l\'inscription.',
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Connexion complète : Firebase Auth + vérification Firestore
+  // ---------------------------------------------------------------------------
+
+  /// Connecte un utilisateur avec son email et mot de passe, puis vérifie
+  /// que son profil Firestore existe et que le compte n'est pas désactivé.
+  ///
+  /// Étapes :
+  /// 1. Authentification Firebase (email + mot de passe)
+  /// 2. Lecture du document users/{uid} dans Firestore
+  /// 3. Vérification que le document existe
+  /// 4. Vérification que le status est "active" (si le champ est présent)
+  ///
+  /// Lance une [UserAuthException] à chaque étape avec un message français.
+  Future<void> signInWithProfileCheck({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      // 1. Authentification Firebase
+      final credential = await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+
+      final user = credential.user;
+
+      if (user == null) {
+        throw UserAuthException(
+          message: 'Impossible de récupérer les informations de connexion.',
+        );
+      }
+
+      // 2. Lecture du profil Firestore
+      final docSnapshot = await _usersCollection.doc(user.uid).get();
+
+      // 3. Vérification que le profil Firestore existe
+      if (!docSnapshot.exists) {
+        // Profil inexistant → on déconnecte Firebase
+        await _auth.signOut();
+        throw UserAuthException(
+          message: 'Votre compte d\'authentification existe, mais votre profil '
+              'utilisateur est introuvable. Contactez l\'assistance.',
+        );
+      }
+
+      // 4. Vérification du statut du compte
+      final data = docSnapshot.data() ?? {};
+      final String? status = data['status'] as String?;
+
+      if (status != null && status != 'active') {
+        // Compte désactivé → on déconnecte Firebase
+        await _auth.signOut();
+        String statusMessage;
+
+        switch (status) {
+          case 'suspended':
+            statusMessage =
+                'Votre compte a été suspendu. Contactez l\'assistance.';
+            break;
+          case 'inactive':
+            statusMessage =
+                'Votre compte est inactif. Contactez l\'assistance.';
+            break;
+          case 'blocked':
+          case 'disabled':
+            statusMessage =
+                'Votre compte a été désactivé. Contactez l\'assistance.';
+            break;
+          case 'pending':
+            statusMessage = 'Votre compte est en attente de validation. '
+                'Veuillez patienter ou contactez l\'assistance.';
+            break;
+          default:
+            statusMessage = 'Votre compte n\'est pas actif. '
+                'Contactez l\'assistance.';
+        }
+
+        throw UserAuthException(message: statusMessage);
+      }
+
+      // Connexion réussie : AuthGate réagira à authStateChanges()
+      notifyListeners();
+    } on FirebaseAuthException catch (e) {
+      throw _convertAuthException(e);
+    } on UserAuthException {
+      // Déjà une exception française, on la relance
+      rethrow;
+    } catch (e) {
+      throw UserAuthException(
+        message: 'Impossible de se connecter. Vérifiez votre connexion réseau.',
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Vérification de profil
+  // ---------------------------------------------------------------------------
+
+  /// Vérifie que l'utilisateur actuellement connecté possède un profil
+  /// Firestore valide et actif.
+  ///
+  /// Retourne true si le profil existe et est actif, false sinon.
+  Future<bool> hasValidProfile() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+
+    try {
+      final doc = await _usersCollection.doc(user.uid).get();
+      if (!doc.exists) return false;
+
+      final data = doc.data();
+      if (data == null) return false;
+
+      final String? status = data['status'] as String?;
+      return status == null || status == 'active';
+    } catch (_) {
+      return false;
     }
   }
 
