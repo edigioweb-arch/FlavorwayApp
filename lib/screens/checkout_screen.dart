@@ -17,7 +17,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   static const Color violetFlavor = Color(0xFF4B1F5C);
 
   String selectedPaymentMethod = 'Orange Money';
-  String selectedAddress = 'Maison - Akwa, Douala';
+  String selectedAddress = 'Maison';
 
   final List<Map<String, String>> addresses = [
     {'name': 'Maison', 'full': 'Akwa, Douala - 20 min'},
@@ -240,7 +240,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           RadioListTile<String>(
             title: Row(
               children: [
-                Image.asset('assets/images/orange_money.png',
+                Image.asset('assets/images/om.png',
                     height: 24,
                     errorBuilder: (_, __, ___) =>
                         Icon(Icons.phone_android, color: orangeFlavor)),
@@ -264,7 +264,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           RadioListTile<String>(
             title: Row(
               children: [
-                Image.asset('assets/images/mtn_momo.png',
+                Image.asset('assets/images/mtnmomo.png',
                     height: 24,
                     errorBuilder: (_, __, ___) =>
                         Icon(Icons.phone_android, color: Colors.green)),

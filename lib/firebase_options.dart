@@ -71,7 +71,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '362183263895',
     projectId: 'flavorway',
     storageBucket: 'flavorway.firebasestorage.app',
-    iosBundleId: 'com.example.monApp',
+    iosBundleId: 'ma.edigioweb.flavorway',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

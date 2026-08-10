@@ -1,6 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/user_auth_service.dart';
+import '../widgets/auth_gate.dart';
+import 'email_verification_screen.dart';
+import 'home_screen.dart';
+import 'welcome_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -28,6 +33,15 @@ class _LoginScreenState extends State<LoginScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print('=== LoginScreen _login DEBUT ===');
+      // ignore: avoid_print
+      print('Email: "$email"');
+      // ignore: avoid_print
+      print('Password vide: ${password.isEmpty}');
+    }
+
     if (email.isEmpty || password.isEmpty) {
       _showError('Veuillez remplir tous les champs.');
       return;
@@ -36,37 +50,64 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Utiliser signInWithProfileCheck qui :
-      //   1. Normalise l'email (trim + lowercase)
-      //   2. Appelle signInWithEmailAndPassword()
-      //   3. Récupère credential.user
-      //   4. Lit users/{uid} dans Firestore
-      //   5. Vérifie que le profil existe
-      //   6. Vérifie le status
-      //   7. Lance UserAuthException si problème
-      //   8. Ne fait AUCUNE navigation
+      if (kDebugMode) {
+        // ignore: avoid_print
+        print('--- Appel signInWithProfileCheck ---');
+      }
+
       await UserAuthService.instance.signInWithProfileCheck(
         email: email,
         password: password,
       );
 
+      if (kDebugMode) {
+        // ignore: avoid_print
+        print('--- signInWithProfileCheck réussi ---');
+      }
+
       if (!mounted) return;
 
-      // AuthGate (toujours monté via home:) détecte authStateChanges()
-      // et bascule automatiquement vers HomeScreen.
-      //
-      // Il suffit de dépiler la route /login pour revenir à la racine
-      // où AuthGate affiche désormais HomeScreen.
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      // Retour vers la route racine (/) qui contient AuthGate.
+      // AuthGate lira l'utilisateur Firebase connecté et affichera
+      // le bon widget (HomeScreen ou EmailVerificationScreen).
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => const AuthGate(
+            loginWidget: WelcomePage(),
+            verificationWidget: EmailVerificationScreen(),
+            homeWidget: HomeScreen(),
+          ),
+        ),
+        (route) => false,
+      );
+
+      if (kDebugMode) {
+        // ignore: avoid_print
+        print('--- LoginScreen: pushNamedAndRemoveUntil vers / ---');
+      }
     } on UserAuthException catch (e) {
+      if (kDebugMode) {
+        // ignore: avoid_print
+        print('UserAuthException attrapée: "${e.message}"');
+      }
       if (!mounted) return;
       _showError(e.message);
     } catch (e) {
+      if (kDebugMode) {
+        // ignore: avoid_print
+        print('Exception generique attrapée: $e');
+        // ignore: avoid_print
+        print('Type: ${e.runtimeType}');
+      }
       if (!mounted) return;
       _showError(
           'Impossible de se connecter. Vérifiez votre connexion réseau.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
+      if (kDebugMode) {
+        // ignore: avoid_print
+        print('--- LoginScreen _login FIN (finally) ---');
+      }
     }
   }
 

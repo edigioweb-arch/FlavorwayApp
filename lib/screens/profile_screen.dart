@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
-import 'dart:io';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'edit_profile_screen.dart';
-import 'payment_methods_screen.dart';
-import 'home_screen.dart';
-import 'addresses_screen.dart';
-import 'chat_screen.dart';
-import '../services/locale_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/user_auth_service.dart';
+import 'addresses_screen.dart';
+import 'payment_methods_screen.dart';
+import 'edit_profile_screen.dart';
+import 'home_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -18,10 +16,75 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String userName = 'Cynthia Kaussa';
-  String userEmail = 'cynthia@email.com';
-  String userPhone = '+242 06 00 00 00';
+  String userName = '';
+  String userEmail = '';
+  String userPhone = '';
   String? profileImagePath;
+  bool _isProfileLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile() async {
+    final user = UserAuthService.instance.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      setState(() {
+        userName = 'Utilisateur';
+        userEmail = '';
+        userPhone = '';
+        _isProfileLoading = false;
+      });
+      return;
+    }
+
+    try {
+      final DocumentSnapshot<Map<String, dynamic>> snapshot =
+          await UserAuthService.instance.getUserProfile(uid: user.uid);
+      final data = snapshot.data() ?? <String, dynamic>{};
+      final fullName = (data['fullName'] as String?)?.trim();
+      final firstName = (data['firstName'] as String?)?.trim();
+      final lastName = (data['lastName'] as String?)?.trim();
+
+      final computedName = (fullName != null && fullName.isNotEmpty)
+          ? fullName
+          : [firstName ?? '', lastName ?? '']
+              .where((value) => value.isNotEmpty)
+              .join(' ')
+              .trim();
+
+      if (!mounted) return;
+      setState(() {
+        userName = computedName.isNotEmpty
+            ? computedName
+            : (user.displayName?.trim().isNotEmpty ?? false)
+                ? user.displayName!.trim()
+                : 'Utilisateur';
+        userEmail = (data['email'] as String?)?.trim().isNotEmpty == true
+            ? (data['email'] as String).trim()
+            : (user.email ?? '');
+        userPhone = ((data['phone'] ?? data['telephone']) as String?)
+                ?.trim()
+                .toString() ??
+            '';
+        profileImagePath = data['photoUrl'] as String?;
+        _isProfileLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        userName = (user.displayName?.trim().isNotEmpty ?? false)
+            ? user.displayName!.trim()
+            : 'Utilisateur';
+        userEmail = user.email ?? '';
+        userPhone = '';
+        _isProfileLoading = false;
+      });
+    }
+  }
 
   Future<void> _openEditProfile() async {
     final result = await Navigator.push(
@@ -36,14 +99,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
 
-    if (result is Map) {
-      setState(() {
-        userName = result['name'] ?? userName;
-        userEmail = result['email'] ?? userEmail;
-        userPhone = result['phone'] ?? userPhone;
-        profileImagePath = result['imagePath'];
-      });
-
+    if (result == true) {
+      await _loadUserProfile();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Profil mis à jour avec succès'),
@@ -75,7 +133,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 24, 20, 30),
-                  child: Column(
+                  child: _isProfileLoading
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 48),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      : Column(
                     children: [
                       _buildUserCard(),
                       const SizedBox(height: 24),
@@ -204,6 +267,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                     ],
+                  ),
                   ),
                 ),
               ),
