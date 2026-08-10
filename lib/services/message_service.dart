@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/message_model.dart';
 import 'notification_service.dart';
+import 'user_auth_service.dart';
 
 class MessageService extends ChangeNotifier {
+  MessageService() {
+    _load();
+  }
+
   final List<ConversationModel> _conversations = [
     ConversationModel(
       id: 'support_flavorway',
@@ -101,6 +107,123 @@ class MessageService extends ChangeNotifier {
       ),
     ],
   };
+  bool _isLoaded = false;
+
+  CollectionReference<Map<String, dynamic>>? get _conversationCollection {
+    final uid = UserAuthService.instance.currentUser?.uid;
+    if (uid == null) return null;
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('conversations');
+  }
+
+  Future<void> _load() async {
+    if (_isLoaded) return;
+    _isLoaded = true;
+    final collection = _conversationCollection;
+    if (collection == null) return;
+
+    try {
+      final snapshot = await collection.get();
+      if (snapshot.docs.isEmpty) {
+        await _saveAll();
+        return;
+      }
+
+      _conversations
+        ..clear()
+        ..addAll(snapshot.docs.map((doc) {
+          final data = doc.data();
+          return ConversationModel(
+            id: doc.id,
+            title: data['title'] as String? ?? 'Conversation',
+            avatar: data['avatar'] as String? ?? '',
+            type: _typeFromString(data['type'] as String?),
+            lastMessage: data['lastMessage'] as String? ?? '',
+            lastMessageTime:
+                (data['lastMessageTime'] as Timestamp?)?.toDate() ?? DateTime.now(),
+            unreadCount: (data['unreadCount'] as num?)?.toInt() ?? 0,
+          );
+        }));
+
+      _messages.clear();
+      for (final doc in snapshot.docs) {
+        final messagesSnapshot = await doc.reference
+            .collection('messages')
+            .orderBy('timestamp')
+            .get();
+        _messages[doc.id] = messagesSnapshot.docs.map((messageDoc) {
+          final data = messageDoc.data();
+          return MessageModel(
+            id: messageDoc.id,
+            conversationId: doc.id,
+            senderId: data['senderId'] as String? ?? '',
+            senderName: data['senderName'] as String? ?? '',
+            content: data['content'] as String? ?? '',
+            timestamp:
+                (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+            isMe: (data['isMe'] as bool?) ?? false,
+            isRead: (data['isRead'] as bool?) ?? false,
+            imageUrl: data['imageUrl'] as String?,
+            latitude: (data['latitude'] as num?)?.toDouble(),
+            longitude: (data['longitude'] as num?)?.toDouble(),
+          );
+        }).toList();
+      }
+
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> _saveAll() async {
+    final collection = _conversationCollection;
+    if (collection == null) return;
+
+    try {
+      for (final conversation in _conversations) {
+        await collection.doc(conversation.id).set({
+          'title': conversation.title,
+          'avatar': conversation.avatar,
+          'type': conversation.type.name,
+          'lastMessage': conversation.lastMessage,
+          'lastMessageTime': Timestamp.fromDate(conversation.lastMessageTime),
+          'unreadCount': conversation.unreadCount,
+        });
+
+        final messagesCollection =
+            collection.doc(conversation.id).collection('messages');
+        final existing = await messagesCollection.get();
+        for (final doc in existing.docs) {
+          await doc.reference.delete();
+        }
+        for (final message in _messages[conversation.id] ?? []) {
+          await messagesCollection.doc(message.id).set({
+            'senderId': message.senderId,
+            'senderName': message.senderName,
+            'content': message.content,
+            'timestamp': Timestamp.fromDate(message.timestamp),
+            'isMe': message.isMe,
+            'isRead': message.isRead,
+            'imageUrl': message.imageUrl,
+            'latitude': message.latitude,
+            'longitude': message.longitude,
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  ConversationType _typeFromString(String? value) {
+    switch (value) {
+      case 'courier':
+        return ConversationType.courier;
+      case 'support':
+        return ConversationType.support;
+      default:
+        return ConversationType.restaurant;
+    }
+  }
 
   List<ConversationModel> get conversations =>
       List.unmodifiable(_conversations);
@@ -157,8 +280,11 @@ class MessageService extends ChangeNotifier {
       NotificationService.instance.addNotification(
         title: 'Message envoyé',
         message: 'Conversation avec ${conversation.title}',
+        type: 'message',
+        targetId: conversationId,
       );
     }
+    _saveAll();
   }
 
   void sendImageMessage({
@@ -191,8 +317,11 @@ class MessageService extends ChangeNotifier {
       NotificationService.instance.addNotification(
         title: 'Image envoyée',
         message: 'Conversation avec ${conversation.title}',
+        type: 'message',
+        targetId: conversationId,
       );
     }
+    _saveAll();
   }
 
   void sendLocationMessage({
@@ -227,8 +356,11 @@ class MessageService extends ChangeNotifier {
       NotificationService.instance.addNotification(
         title: 'Position partagée',
         message: 'Conversation avec ${conversation.title}',
+        type: 'message',
+        targetId: conversationId,
       );
     }
+    _saveAll();
   }
 
   void sendSupportMessage(String content) {
@@ -240,6 +372,44 @@ class MessageService extends ChangeNotifier {
     NotificationService.instance.addSupportNotification(
       'Nouveau message envoyé au support.',
     );
+  }
+
+  void receiveTextMessage({
+    required String conversationId,
+    required String senderId,
+    required String senderName,
+    required String content,
+  }) {
+    final trimmedContent = content.trim();
+    if (trimmedContent.isEmpty) return;
+
+    final message = MessageModel(
+      id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+      conversationId: conversationId,
+      senderId: senderId,
+      senderName: senderName,
+      content: trimmedContent,
+      timestamp: DateTime.now(),
+      isMe: false,
+      isRead: false,
+    );
+
+    _messages.putIfAbsent(conversationId, () => []);
+    _messages[conversationId]!.add(message);
+
+    final conversation = conversationById(conversationId);
+    if (conversation != null) {
+      _updateConversationPreview(
+        conversationId: conversationId,
+        lastMessage: trimmedContent,
+        unreadCount: conversation.unreadCount + 1,
+      );
+      NotificationService.instance.addIncomingMessageNotification(
+        conversation.title,
+        conversationId: conversationId,
+      );
+    }
+    _saveAll();
   }
 
   void markAsRead(String conversationId) {
@@ -269,6 +439,7 @@ class MessageService extends ChangeNotifier {
     }
 
     notifyListeners();
+    _saveAll();
   }
 
   void _updateConversationPreview({
@@ -293,5 +464,6 @@ class MessageService extends ChangeNotifier {
     );
 
     notifyListeners();
+    _saveAll();
   }
 }

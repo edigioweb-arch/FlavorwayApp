@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/user_auth_service.dart';
 
 const Color orangeFlavor = Color(0xFFF36A2D);
 const Color violetFlavor = Color(0xFF4B1F5C);
@@ -34,6 +35,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   File? _profileImage;
   bool _hasChanges = false;
   bool _isSaving = false;
+
+  Map<String, String> _splitName(String fullName) {
+    final parts = fullName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+
+    if (parts.isEmpty) {
+      return {
+        'firstName': '',
+        'lastName': '',
+      };
+    }
+
+    return {
+      'firstName': parts.first,
+      'lastName': parts.length > 1 ? parts.sublist(1).join(' ') : '',
+    };
+  }
 
   @override
   void initState() {
@@ -305,31 +326,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               return;
                             }
 
+                            final normalizedName =
+                                _nameController.text.trim();
+                            final normalizedEmail =
+                                _emailController.text.trim().toLowerCase();
+                            final normalizedPhone =
+                                _phoneController.text.trim();
+                            final names = _splitName(normalizedName);
+
                             final data = <String, dynamic>{
-                              'fullName': _nameController.text.trim(),
-                              'prenom':
-                                  _nameController.text.trim().split(' ').first,
-                              'nom': _nameController.text
-                                          .trim()
-                                          .split(' ')
-                                          .length >
-                                      1
-                                  ? _nameController.text
-                                      .trim()
-                                      .split(' ')
-                                      .skip(1)
-                                      .join(' ')
-                                  : '',
-                              'email': _emailController.text.trim(),
-                              'phone': _phoneController.text.trim(),
-                              'telephone': _phoneController.text.trim(),
-                              'updatedAt': FieldValue.serverTimestamp(),
+                              'uid': user.uid,
+                              'fullName': normalizedName,
+                              'firstName': names['firstName'],
+                              'lastName': names['lastName'],
+                              'prenom': names['firstName'],
+                              'nom': names['lastName'],
+                              'email': normalizedEmail,
+                              'phone': normalizedPhone,
+                              'telephone': normalizedPhone,
                             };
 
-                            await FirebaseFirestore.instance
-                                .collection('users')
-                                .doc(user.uid)
-                                .set(data, SetOptions(merge: true));
+                            await UserAuthService.instance.updateUserProfile(
+                              uid: user.uid,
+                              data: data,
+                            );
+
+                            if (user.displayName != normalizedName &&
+                                normalizedName.isNotEmpty) {
+                              await user.updateDisplayName(normalizedName);
+                            }
 
                             if (mounted) {
                               Navigator.pop(context, true);

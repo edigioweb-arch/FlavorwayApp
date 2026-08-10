@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../services/payment_method_service.dart';
 
 const Color orangeFlavor = Color(0xFFF36A2D);
 const Color violetFlavor = Color(0xFF4B1F5C);
@@ -14,36 +15,6 @@ class PaymentMethodsScreen extends StatefulWidget {
 }
 
 class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
-  int selectedMethod = 3;
-
-  final List<Map<String, dynamic>> methods = [
-    {
-      'name': 'Airtel Money', // Dynamic data, keep as is
-      'subtitle': '1234',
-      'type': 'orange',
-    },
-    {
-      'name': 'MTN MoMo', // Dynamic data, keep as is
-      'subtitle': '5678',
-      'type': 'mtn',
-    },
-    {
-      'name': 'Visa ****9012', // Dynamic data, keep as is
-      'subtitle': '9012',
-      'type': 'visa',
-    },
-    {
-      'name': 'Mastercard', // Dynamic data, keep as is
-      'subtitle': '2234 5678 9020',
-      'type': 'mastercard',
-    },
-    {
-      'name': 'Paiement à la livraison', // Dynamic data, keep as is
-      'subtitle': '',
-      'type': 'cash',
-    },
-  ];
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -68,23 +39,37 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
       ),
       body: Stack(
         children: [
-          ListView(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
-            children: [
-              ...methods.asMap().entries.map((entry) {
-                final index = entry.key;
-                final method = entry.value;
-                final isSelected = selectedMethod == index;
+          AnimatedBuilder(
+            animation: PaymentMethodService.instance,
+            builder: (context, _) {
+              final methods = PaymentMethodService.instance.methods;
+              final selectedIndex = PaymentMethodService.instance.selectedIndex;
 
-                return _PaymentMethodTile(
-                  method: method,
-                  isSelected: isSelected,
-                  onTap: () => setState(() => selectedMethod = index),
-                );
-              }),
-              const SizedBox(height: 14),
-              _AddCardPanel(onTap: _showAddCardSheet),
-            ],
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+                children: [
+                  ...methods.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final method = entry.value;
+
+                    return _PaymentMethodTile(
+                      method: {
+                        'name': method.name,
+                        'subtitle': method.subtitle,
+                        'type': method.type,
+                      },
+                      isSelected: selectedIndex == index,
+                      onTap: () {
+                        PaymentMethodService.instance.selectMethod(index);
+                        Navigator.pop(context, method.name);
+                      },
+                    );
+                  }),
+                  const SizedBox(height: 14),
+                  _AddCardPanel(onTap: _showAddCardSheet),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -238,15 +223,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
                       return;
                     }
 
-                    setState(() {
-                      methods.insert(3, {
-                        'name': 'Nouvelle carte',
-                        'subtitle':
-                            '**** ${cardNumber.length >= 4 ? cardNumber.substring(cardNumber.length - 4) : cardNumber}',
-                        'type': 'card',
-                      });
-                      selectedMethod = 3;
-                    });
+                    PaymentMethodService.instance.addCard(cardNumber);
 
                     Navigator.maybePop(context);
                   },

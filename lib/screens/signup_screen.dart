@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/user_auth_service.dart';
+import '../widgets/auth_gate.dart';
+import 'email_verification_screen.dart';
+import 'home_screen.dart';
+import 'welcome_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -260,7 +264,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
       if (Navigator.canPop(context)) {
         Navigator.pop(context);
       } else {
-        Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const AuthGate(
+              loginWidget: WelcomePage(),
+              verificationWidget: EmailVerificationScreen(),
+              homeWidget: HomeScreen(),
+            ),
+          ),
+          (route) => false,
+        );
       }
     }
   }

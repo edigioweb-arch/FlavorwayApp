@@ -1,9 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/user_auth_service.dart';
+import '../services/locale_service.dart';
 import 'addresses_screen.dart';
+import 'chat_screen.dart';
+import 'notification_preferences_screen.dart';
 import 'payment_methods_screen.dart';
 import 'edit_profile_screen.dart';
 import 'home_screen.dart';
@@ -45,9 +50,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final DocumentSnapshot<Map<String, dynamic>> snapshot =
           await UserAuthService.instance.getUserProfile(uid: user.uid);
       final data = snapshot.data() ?? <String, dynamic>{};
-      final fullName = (data['fullName'] as String?)?.trim();
-      final firstName = (data['firstName'] as String?)?.trim();
-      final lastName = (data['lastName'] as String?)?.trim();
+      final fullName = _normalizedString(data['fullName']);
+      final firstName =
+          _normalizedString(data['firstName']) ?? _normalizedString(data['prenom']);
+      final lastName =
+          _normalizedString(data['lastName']) ?? _normalizedString(data['nom']);
 
       final computedName = (fullName != null && fullName.isNotEmpty)
           ? fullName
@@ -63,14 +70,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             : (user.displayName?.trim().isNotEmpty ?? false)
                 ? user.displayName!.trim()
                 : 'Utilisateur';
-        userEmail = (data['email'] as String?)?.trim().isNotEmpty == true
-            ? (data['email'] as String).trim()
-            : (user.email ?? '');
-        userPhone = ((data['phone'] ?? data['telephone']) as String?)
-                ?.trim()
-                .toString() ??
+        userEmail = _normalizedString(data['email']) ?? (user.email ?? '');
+        userPhone = _normalizedString(data['phone']) ??
+            _normalizedString(data['telephone']) ??
             '';
-        profileImagePath = data['photoUrl'] as String?;
+        profileImagePath = _normalizedString(data['photoUrl']);
         _isProfileLoading = false;
       });
     } catch (_) {
@@ -84,6 +88,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _isProfileLoading = false;
       });
     }
+  }
+
+  String? _normalizedString(dynamic value) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   Future<void> _openEditProfile() async {
@@ -139,136 +149,156 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Center(child: CircularProgressIndicator()),
                         )
                       : Column(
-                    children: [
-                      _buildUserCard(),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('Mon compte'),
-                      const SizedBox(height: 12),
-                      _buildMenuCard(
-                        children: [
-                          _buildMenuTile(
-                            icon: Icons.person_outline,
-                            title: 'Informations personnelles',
-                            subtitle: 'Nom, e-mail, téléphone',
-                            onTap: _openEditProfile,
-                          ),
-                          _divider(),
-                          _buildMenuTile(
-                            icon: Icons.location_on_outlined,
-                            title: 'Mes adresses',
-                            subtitle: 'Maison, bureau, autres',
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const AddressesScreen(),
+                          children: [
+                            _buildUserCard(),
+                            const SizedBox(height: 24),
+                            _buildSectionTitle('Mon compte'),
+                            const SizedBox(height: 12),
+                            _buildMenuCard(
+                              children: [
+                                _buildMenuTile(
+                                  icon: Icons.person_outline,
+                                  title: 'Informations personnelles',
+                                  subtitle: 'Nom, e-mail, téléphone',
+                                  onTap: _openEditProfile,
+                                ),
+                                _divider(),
+                                _buildMenuTile(
+                                  icon: Icons.location_on_outlined,
+                                  title: 'Mes adresses',
+                                  subtitle: 'Maison, bureau, autres',
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const AddressesScreen(),
+                                    ),
+                                  ),
+                                ),
+                                _divider(),
+                                _buildMenuTile(
+                                  icon: Icons.credit_card_outlined,
+                                  title: 'Moyens de paiement',
+                                  subtitle: 'Carte, mobile money',
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const PaymentMethodsScreen(),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                            _buildSectionTitle('Mes activités'),
+                            const SizedBox(height: 12),
+                            _buildMenuCard(
+                              children: [
+                                _buildMenuTile(
+                                  icon: Icons.receipt_long_outlined,
+                                  title: 'Historique des commandes',
+                                  subtitle: 'Voir vos anciennes commandes',
+                                  onTap: () =>
+                                      Navigator.pushNamed(context, '/orders'),
+                                ),
+                                _divider(),
+                                _buildMenuTile(
+                                  icon: Icons.event_seat_outlined,
+                                  title: 'Mes réservations',
+                                  subtitle: 'Tables réservées et statuts',
+                                  onTap: () => Navigator.pushNamed(
+                                    context,
+                                    '/reservations',
+                                  ),
+                                ),
+                                _divider(),
+                                _buildMenuTile(
+                                  icon: Icons.favorite_border,
+                                  title: 'Mes favoris',
+                                  subtitle: 'Restaurants et plats enregistrés',
+                                  onTap: () => Navigator.pushNamed(
+                                    context,
+                                    '/favorites',
+                                  ),
+                                ),
+                                _divider(),
+                                _buildMenuTile(
+                                  icon: Icons.local_offer_outlined,
+                                  title: 'Promotions',
+                                  subtitle: 'Mes offres et réductions',
+                                  onTap: () => _showPromotionsSheet(context),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                            _buildSectionTitle('Aide & paramètres'),
+                            const SizedBox(height: 12),
+                            _buildMenuCard(
+                              children: [
+                                _buildMenuTile(
+                                  icon: Icons.notifications_none_outlined,
+                                  title: 'Notifications',
+                                  subtitle: 'Activer et choisir un son',
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const NotificationPreferencesScreen(),
+                                    ),
+                                  ),
+                                ),
+                                _divider(),
+                                _buildMenuTile(
+                                  icon: Icons.support_agent_outlined,
+                                  title: 'Support client',
+                                  subtitle: 'Besoin d\'aide ?',
+                                  onTap: () => _showSupportSheet(context),
+                                ),
+                                _divider(),
+                                _buildMenuTile(
+                                  icon: Icons.settings_outlined,
+                                  title: 'Paramètres',
+                                  subtitle: 'Notifications, sécurité, langue',
+                                  onTap: () => _showSettingsSheet(context),
+                                ),
+                                _divider(),
+                                _buildMenuTile(
+                                  icon: Icons.privacy_tip_outlined,
+                                  title: 'Confidentialité',
+                                  subtitle: 'Conditions et politique',
+                                  onTap: () => _showPrivacySheet(context),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 28),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 56,
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: orangeFlavor,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(90),
+                                    side:
+                                        const BorderSide(color: orangeFlavor),
+                                  ),
+                                ),
+                                onPressed: () => _showLogoutDialog(context),
+                                icon: const Icon(Icons.logout),
+                                label: Text(
+                                  'Se déconnecter',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                          _divider(),
-                          _buildMenuTile(
-                            icon: Icons.credit_card_outlined,
-                            title: 'Moyens de paiement',
-                            subtitle: 'Carte, mobile money',
-                            onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (context) =>
-                                        const PaymentMethodsScreen())),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('Mes activités'),
-                      const SizedBox(height: 12),
-                      _buildMenuCard(
-                        children: [
-                          _buildMenuTile(
-                            icon: Icons.receipt_long_outlined,
-                            title: 'Historique des commandes',
-                            subtitle: 'Voir vos anciennes commandes',
-                            onTap: () =>
-                                Navigator.pushNamed(context, '/orders'),
-                          ),
-                          _divider(),
-                          _buildMenuTile(
-                            icon: Icons.event_seat_outlined,
-                            title: 'Mes réservations',
-                            subtitle: 'Tables réservées et statuts',
-                            onTap: () =>
-                                Navigator.pushNamed(context, '/reservations'),
-                          ),
-                          _divider(),
-                          _buildMenuTile(
-                            icon: Icons.favorite_border,
-                            title: 'Mes favoris',
-                            subtitle: 'Restaurants et plats enregistrés',
-                            onTap: () =>
-                                Navigator.pushNamed(context, '/favorites'),
-                          ),
-                          _divider(),
-                          _buildMenuTile(
-                            icon: Icons.local_offer_outlined,
-                            title: 'Promotions',
-                            subtitle: 'Mes offres et réductions',
-                            onTap: () => _showPromotionsSheet(context),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('Aide & paramètres'),
-                      const SizedBox(height: 12),
-                      _buildMenuCard(
-                        children: [
-                          _buildMenuTile(
-                            icon: Icons.support_agent_outlined,
-                            title: 'Support client',
-                            subtitle: 'Besoin d\'aide ?',
-                            onTap: () => _showSupportSheet(context),
-                          ),
-                          _divider(),
-                          _buildMenuTile(
-                            icon: Icons.settings_outlined,
-                            title: 'Paramètres',
-                            subtitle: 'Notifications, sécurité, langue',
-                            onTap: () => _showSettingsSheet(context),
-                          ),
-                          _divider(),
-                          _buildMenuTile(
-                            icon: Icons.privacy_tip_outlined,
-                            title: 'Confidentialité',
-                            subtitle: 'Conditions et politique',
-                            onTap: () => _showPrivacySheet(context),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 28),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 56,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: orangeFlavor,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(90),
-                              side: const BorderSide(color: orangeFlavor),
-                            ),
-                          ),
-                          onPressed: () => _showLogoutDialog(context),
-                          icon: const Icon(Icons.logout),
-                          label: Text(
-                            'Se déconnecter',
-                            style: GoogleFonts.poppins(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          ],
                         ),
-                      ),
-                    ],
-                  ),
-                  ),
                 ),
               ),
             ),
@@ -649,8 +679,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
       builder: (context) {
-        bool notifications = true;
-
         return StatefulBuilder(
           builder: (context, setModalState) {
             return Padding(
@@ -662,32 +690,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _sheetHandle(),
                   const SizedBox(height: 18),
                   _sheetTitle('Paramètres'),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: notifications,
-                    activeColor: orangeFlavor,
-                    title: const Text(
-                      'Notifications',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: const Text('Commandes, promotions et messages'),
-                    onChanged: (value) {
-                      setModalState(() {
-                        notifications = value;
-                      });
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            value
-                                ? 'Notifications activées'
-                                : 'Notifications désactivées',
-                          ),
-                          duration: const Duration(seconds: 1),
-                        ),
-                      );
-                    },
-                  ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.language_outlined,

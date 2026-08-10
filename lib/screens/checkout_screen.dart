@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'addresses_screen.dart';
+import 'payment_methods_screen.dart';
 import '../services/cart_service.dart';
 import '../services/order_service.dart';
 import '../services/notification_service.dart';
+import '../services/payment_method_service.dart';
 
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({super.key});
@@ -24,6 +27,60 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     {'name': 'Bureau', 'full': 'Bonanjo, Douala - 15 min'},
     {'name': 'Chez maman', 'full': 'New Bell, Douala - 30 min'},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    selectedPaymentMethod = PaymentMethodService.instance.selectedMethod.name;
+  }
+
+  Future<void> _openAddressBook() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const AddressesScreen(),
+      ),
+    );
+
+    if (result is! Map) return;
+
+    final name = (result['name'] as String?)?.trim();
+    final full = (result['full'] as String?)?.trim();
+    if (name == null || full == null || name.isEmpty || full.isEmpty) return;
+
+    final existingIndex = addresses.indexWhere((address) => address['name'] == name);
+    setState(() {
+      if (existingIndex == -1) {
+        addresses.add({
+          'name': name,
+          'full': full,
+        });
+      } else {
+        addresses[existingIndex]['full'] = full;
+      }
+      selectedAddress = name;
+    });
+  }
+
+  Future<void> _openPaymentMethods() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const PaymentMethodsScreen(),
+      ),
+    );
+
+    if (result is String && result.trim().isNotEmpty) {
+      setState(() {
+        selectedPaymentMethod = result.trim();
+      });
+      return;
+    }
+
+    setState(() {
+      selectedPaymentMethod = PaymentMethodService.instance.selectedMethod.name;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -217,7 +274,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               )),
           const Divider(height: 1),
           TextButton.icon(
-            onPressed: () {},
+            onPressed: _openAddressBook,
             icon: const Icon(Icons.add, size: 18),
             label: Text('Ajouter une adresse',
                 style: TextStyle(color: orangeFlavor)),
@@ -237,6 +294,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ),
       child: Column(
         children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _openPaymentMethods,
+              icon: const Icon(Icons.wallet_outlined, size: 18),
+              label: const Text('Gérer'),
+            ),
+          ),
           RadioListTile<String>(
             title: Row(
               children: [

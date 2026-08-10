@@ -261,6 +261,24 @@ class _ChatScreenState extends State<ChatScreen> {
                 icon: const Icon(Icons.phone_rounded),
                 color: orangeFlavor,
               ),
+              IconButton(
+                onPressed: () {
+                  final conversation = messageService.conversationById(
+                    widget.conversationId,
+                  );
+                  messageService.receiveTextMessage(
+                    conversationId: widget.conversationId,
+                    senderId: widget.conversationId,
+                    senderName: conversation?.title ?? 'Contact',
+                    content: 'Message reçu de ${conversation?.title ?? 'contact'}',
+                  );
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _scrollToBottom();
+                  });
+                },
+                icon: const Icon(Icons.mark_chat_unread_outlined),
+                color: violetFlavor,
+              ),
               const SizedBox(width: 8),
             ],
           ),

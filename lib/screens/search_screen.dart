@@ -99,7 +99,8 @@ class _SearchScreenState extends State<SearchScreen> {
                         subtitle:
                             const Text('4.5⭐ • 25 min • Livraison 500 FCFA'),
                         trailing: const Icon(Icons.arrow_forward_ios),
-                        onTap: () {},
+                        onTap: () =>
+                            Navigator.pushNamed(context, '/restaurant-detail'),
                       ),
                     ),
                   ),

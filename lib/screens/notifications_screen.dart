@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../services/notification_service.dart';
+import 'chat_screen.dart';
 import 'messages_screen.dart';
 import 'order_tracking_screen.dart';
 
@@ -69,11 +70,8 @@ class NotificationsScreen extends StatelessWidget {
                 onTap: () {
                   NotificationService.instance.markAsRead(notification.id);
 
-                  if (notification.title.contains('Commande')) {
-                    final orderId = notification.message.split(' ').firstWhere(
-                          (word) => word.startsWith('FLW-'),
-                          orElse: () => '',
-                        );
+                  if (notification.type == 'order') {
+                    final orderId = notification.targetId ?? '';
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -85,19 +83,31 @@ class NotificationsScreen extends StatelessWidget {
                     return;
                   }
 
-                  if (notification.title.contains('Réservation')) {
+                  if (notification.type == 'reservation') {
                     Navigator.pushNamed(context, '/reservations');
                     return;
                   }
 
-                  if (notification.title.contains('Article')) {
+                  if (notification.type == 'cart') {
                     Navigator.pushNamed(context, '/cart');
                     return;
                   }
 
-                  if (notification.title.contains('Message') ||
-                      notification.title.contains('Image') ||
-                      notification.title.contains('Position')) {
+                  if (notification.type == 'message' &&
+                      notification.targetId != null &&
+                      notification.targetId!.isNotEmpty) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ChatScreen(
+                          conversationId: notification.targetId!,
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+
+                  if (notification.type == 'support') {
                     Navigator.push(
                       context,
                       MaterialPageRoute(

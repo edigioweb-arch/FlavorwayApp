@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+
+import '../services/user_auth_service.dart';
 
 class AddressesScreen extends StatefulWidget {
   const AddressesScreen({super.key});
@@ -11,20 +14,108 @@ class AddressesScreen extends StatefulWidget {
 }
 
 class _AddressesScreenState extends State<AddressesScreen> {
-  final List<Map<String, dynamic>> addresses = [
-    {
-      'label': 'Maison',
-      'address': '12 Avenue de la Paix, Brazzaville',
-      'default': true,
-      'icon': Icons.home_rounded,
-    },
-    {
-      'label': 'Bureau',
-      'address': 'Tour Mayombe, Centre-ville',
-      'default': false,
-      'icon': Icons.business_rounded,
-    },
-  ];
+  final List<Map<String, dynamic>> addresses = [];
+
+  CollectionReference<Map<String, dynamic>>? get _addressCollection {
+    final uid = UserAuthService.instance.currentUser?.uid;
+    if (uid == null) return null;
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('addresses');
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAddresses();
+  }
+
+  Future<void> _loadAddresses() async {
+    try {
+      final snapshot = await _addressCollection?.orderBy('createdAt').get();
+      if (snapshot == null || snapshot.docs.isEmpty) {
+        setState(() {
+          addresses
+            ..clear()
+            ..addAll([
+              {
+                'id': 'home',
+                'label': 'Maison',
+                'address': '12 Avenue de la Paix, Brazzaville',
+                'default': true,
+                'icon': Icons.home_rounded,
+              },
+              {
+                'id': 'work',
+                'label': 'Bureau',
+                'address': 'Tour Mayombe, Centre-ville',
+                'default': false,
+                'icon': Icons.business_rounded,
+              },
+            ]);
+        });
+        await _saveAllAddresses();
+        return;
+      }
+
+      setState(() {
+        addresses
+          ..clear()
+          ..addAll(snapshot.docs.map((doc) {
+            final data = doc.data();
+            return {
+              'id': doc.id,
+              'label': data['label'] as String? ?? 'Adresse',
+              'address': data['address'] as String? ?? '',
+              'default': (data['default'] as bool?) ?? false,
+              'icon': _iconFromType(data['type'] as String?),
+            };
+          }));
+      });
+    } catch (_) {}
+  }
+
+  IconData _iconFromType(String? type) {
+    switch (type) {
+      case 'work':
+        return Icons.business_rounded;
+      case 'other':
+        return Icons.location_on_rounded;
+      default:
+        return Icons.home_rounded;
+    }
+  }
+
+  String _typeFromIcon(IconData icon) {
+    if (icon == Icons.business_rounded) return 'work';
+    if (icon == Icons.location_on_rounded) return 'other';
+    return 'home';
+  }
+
+  Future<void> _saveAllAddresses() async {
+    final collection = _addressCollection;
+    if (collection == null) return;
+    try {
+      final existing = await collection.get();
+      for (final doc in existing.docs) {
+        await doc.reference.delete();
+      }
+      for (final address in addresses) {
+        final docId = (address['id'] as String?)?.isNotEmpty == true
+            ? address['id'] as String
+            : collection.doc().id;
+        address['id'] = docId;
+        await collection.doc(docId).set({
+          'label': address['label'],
+          'address': address['address'],
+          'default': address['default'],
+          'type': _typeFromIcon(address['icon'] as IconData),
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (_) {}
+  }
 
   Future<String?> _getCurrentAddress() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -111,6 +202,15 @@ class _AddressesScreenState extends State<AddressesScreen> {
               borderRadius: BorderRadius.circular(24),
             ),
             child: ListTile(
+              onTap: () {
+                Navigator.pop(
+                  context,
+                  {
+                    'name': item['label'] as String,
+                    'full': item['address'] as String,
+                  },
+                );
+              },
               leading: Icon(item['icon']),
               title: Text(item['label']),
               subtitle: Text(item['address']),
@@ -134,11 +234,13 @@ class _AddressesScreenState extends State<AddressesScreen> {
                           }
                           addresses[index]['default'] = true;
                         });
+                        _saveAllAddresses();
                       }
                       if (value == 'delete') {
                         setState(() {
                           addresses.removeAt(index);
                         });
+                        _saveAllAddresses();
                       }
                     },
                     itemBuilder: (context) => [
@@ -241,6 +343,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                       addresses[index]['label'] = labelController.text.trim();
                       addresses[index]['address'] = addressController.text.trim();
                     });
+                    _saveAllAddresses();
 
                     Navigator.pop(context);
                   },
@@ -314,12 +417,14 @@ class _AddressesScreenState extends State<AddressesScreen> {
 
                     setState(() {
                       addresses.add({
+                        'id': '',
                         'label': labelController.text.trim(),
                         'address': addressController.text.trim(),
                         'default': false,
                         'icon': Icons.location_on_rounded,
                       });
                     });
+                    _saveAllAddresses();
 
                     Navigator.pop(context);
                   },

@@ -66,7 +66,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                 phone: '+242 06 00 00 00',
                 status: 'Confirmée',
                 statusColor: Colors.green,
-                onDetails: () => _showReservationDetails(context),
+                onDetails: () => _showReservationDetails(context, reservation),
                 onCancel: () => _showCancelDialog(context, reservation),
               );
             },
@@ -76,7 +76,10 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     );
   }
 
-  static void _showReservationDetails(BuildContext context) {
+  static void _showReservationDetails(
+    BuildContext context,
+    Reservation reservation,
+  ) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -109,10 +112,13 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                 ),
               ),
               const SizedBox(height: 14),
-              _detailLine('Restaurant', 'Joli Coin'),
-              _detailLine('Date', 'Aujourd’hui'),
-              _detailLine('Heure', '20:00'),
-              _detailLine('Personnes', '2 personnes'),
+              _detailLine('Restaurant', reservation.restaurantName),
+              _detailLine('Date', reservation.date),
+              _detailLine('Heure', reservation.time),
+              _detailLine(
+                'Personnes',
+                '${reservation.guests} personne${reservation.guests > 1 ? 's' : ''}',
+              ),
               _detailLine('Table', 'Table standard'),
               _detailLine('Téléphone', '+242 06 00 00 00'),
               const SizedBox(height: 18),
