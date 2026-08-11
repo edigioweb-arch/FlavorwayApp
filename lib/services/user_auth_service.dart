@@ -63,6 +63,21 @@ class UserAuthService extends ChangeNotifier {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+      final normalizedRole =
+          (profileData['role'] as String?)?.trim().toLowerCase();
+      if (normalizedRole == 'restaurant' ||
+          normalizedRole == 'restaurant_owner') {
+        try {
+          await LaravelSyncService.instance.syncCurrentRestaurantOwner();
+        } on LaravelSyncException catch (e) {
+          if (kDebugMode) {
+            // ignore: avoid_print
+            print('=== SIGNUP RESTAURANT SYNC WARNING ===');
+            // ignore: avoid_print
+            print('Cause sync Laravel après inscription: ${e.message}');
+          }
+        }
+      }
       if (profileData['firstName'] != null || profileData['lastName'] != null) {
         final displayName = [
           profileData['firstName'] ?? '',
