@@ -5,6 +5,7 @@ import '../services/user_auth_service.dart';
 import '../widgets/auth_gate.dart';
 import 'email_verification_screen.dart';
 import 'home_screen.dart';
+import 'restaurant_owner/restaurant_dashboard_screen.dart';
 import 'welcome_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -66,6 +67,40 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (!mounted) return;
+
+      final user = UserAuthService.instance.currentUser;
+      if (user != null) {
+        final profile =
+            await UserAuthService.instance.getUserProfile(uid: user.uid);
+        final data = profile.data() ?? <String, dynamic>{};
+        final role = (data['role'] as String?)?.trim().toLowerCase();
+
+        if (role == 'restaurant' || role == 'restaurant_owner') {
+          if (!mounted) return;
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Votre compte restaurateur est connecte. La validation admin reste en attente.',
+              ),
+            ),
+          );
+
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (_) => RestaurantDashboardScreen(),
+            ),
+            (route) => false,
+          );
+
+          if (kDebugMode) {
+            // ignore: avoid_print
+            print('--- LoginScreen: redirection vers /restaurant-dashboard ---');
+          }
+
+          return;
+        }
+      }
 
       // Retour vers la route racine (/) qui contient AuthGate.
       // AuthGate lira l'utilisateur Firebase connecté et affichera

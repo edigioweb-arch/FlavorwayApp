@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'laravel_sync_service.dart';
 
 /// Service d'authentification utilisant Firebase Authentication et Firestore.
 class UserAuthService extends ChangeNotifier {
@@ -320,16 +321,73 @@ class UserAuthService extends ChangeNotifier {
 
       final data = docSnapshot.data() ?? {};
       final String? status = data['status'] as String?;
+      final String? role = data['role'] as String?;
 
       if (kDebugMode) {
         // ignore: avoid_print
         print('Valeur du champ status: "$status"');
+        // ignore: avoid_print
+        print('Valeur du champ role: "$role"');
         // ignore: avoid_print
         print(
             'Condition status != null && status != "active": ${status != null && status != 'active'}');
       }
 
       if (status != null && status != 'active') {
+        final normalizedRole = role?.trim().toLowerCase();
+        final isRestaurantRole = normalizedRole == 'restaurant' ||
+            normalizedRole == 'restaurant_owner';
+
+        if (kDebugMode) {
+          // ignore: avoid_print
+          print('=== RESTAURANT SYNC DEBUG ===');
+          // ignore: avoid_print
+          print('role Firestore: ${normalizedRole ?? 'null'}');
+          // ignore: avoid_print
+          print('status Firestore: ${status.trim().toLowerCase()}');
+          // ignore: avoid_print
+          print('Firebase currentUser null: ${_auth.currentUser == null}');
+        }
+
+        if (status == 'pending' && isRestaurantRole) {
+          try {
+            final syncResult =
+                await LaravelSyncService.instance.syncCurrentRestaurantOwner();
+
+            if (kDebugMode) {
+              final restaurant =
+                  syncResult['restaurant'] as Map<String, dynamic>?;
+              // ignore: avoid_print
+              print(
+                'restaurant Laravel id: ${restaurant?['id'] ?? 'null'}',
+              );
+              // ignore: avoid_print
+              print(
+                'restaurant Laravel status: ${restaurant?['status'] ?? 'null'}',
+              );
+            }
+          } on LaravelSyncException catch (e) {
+            if (kDebugMode) {
+              // ignore: avoid_print
+              print('sync success: false');
+              // ignore: avoid_print
+              print('Cause sync Laravel: ${e.message}');
+            }
+
+            await _auth.signOut();
+            throw UserAuthException(message: e.message);
+          }
+
+          if (kDebugMode) {
+            // ignore: avoid_print
+            print(
+              '--- Restaurateur pending autorise a poursuivre vers son espace ---',
+            );
+          }
+
+          return;
+        }
+
         if (kDebugMode) {
           // ignore: avoid_print
           print('--- signOut car status != active ---');

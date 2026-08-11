@@ -2,6 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../screens/restaurant_owner/restaurant_dashboard_screen.dart';
+import '../services/user_auth_service.dart';
+
 /// Widget racine qui détermine l'écran à afficher en fonction de l'état de
 /// de connexion Firebase et de la vérification de l'e-mail.
 ///
@@ -66,9 +69,42 @@ class AuthGate extends StatelessWidget {
         if (user == null) {
           return loginWidget ?? const SizedBox();
         }
-        return user.emailVerified
-            ? (homeWidget ?? const SizedBox())
-            : (verificationWidget ?? const SizedBox());
+
+        if (!user.emailVerified) {
+          return verificationWidget ?? const SizedBox();
+        }
+
+        return FutureBuilder(
+          future: UserAuthService.instance.getUserProfile(uid: user.uid),
+          builder: (context, profileSnapshot) {
+            if (profileSnapshot.connectionState == ConnectionState.waiting) {
+              return loadingWidget ??
+                  const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  );
+            }
+
+            if (profileSnapshot.hasError || !profileSnapshot.hasData) {
+              return homeWidget ?? const SizedBox();
+            }
+
+            final profileData = profileSnapshot.data?.data() ?? {};
+            final normalizedRole =
+                (profileData['role'] as String?)?.trim().toLowerCase();
+
+            if (kDebugMode) {
+              // ignore: avoid_print
+              print('AuthGate role Firestore: ${normalizedRole ?? 'null'}');
+            }
+
+            if (normalizedRole == 'restaurant' ||
+                normalizedRole == 'restaurant_owner') {
+              return const RestaurantDashboardScreen();
+            }
+
+            return homeWidget ?? const SizedBox();
+          },
+        );
       },
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../services/laravel_sync_service.dart';
 import '../../services/user_auth_service.dart';
 
 class RestaurantOwnerLoginScreen extends StatefulWidget {
@@ -42,8 +43,8 @@ class _RestaurantOwnerLoginScreenState
     setState(() => _isLoading = true);
 
     try {
-      // Connexion réelle Firebase + vérification Firestore
-      await UserAuthService.instance.signInWithProfileCheck(
+      // Connexion Firebase restaurateur sans bloquer les comptes en attente.
+      await UserAuthService.instance.signIn(
         email: email,
         password: password,
       );
@@ -57,7 +58,34 @@ class _RestaurantOwnerLoginScreenState
             await UserAuthService.instance.getUserProfile(uid: user.uid);
         final data = profile.data();
 
-        if (data != null && data['role'] == 'restaurant_owner') {
+        final role = (data?['role'] as String?)?.trim().toLowerCase();
+        final status = (data?['status'] as String?)?.trim().toLowerCase();
+
+        if (role == 'restaurant_owner' || role == 'restaurant') {
+          if (status == 'suspended' ||
+              status == 'inactive' ||
+              status == 'blocked' ||
+              status == 'disabled') {
+            await UserAuthService.instance.signOut();
+            if (!mounted) return;
+            _showError(
+              'Ce compte restaurateur n’est pas autorisé à se connecter actuellement.',
+            );
+            return;
+          }
+
+          await LaravelSyncService.instance.syncCurrentRestaurantOwner();
+
+          if (!mounted) return;
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Votre demande restaurateur est en attente de validation.',
+              ),
+            ),
+          );
+
           // Bon rôle → redirection vers le dashboard
           // AuthGate gère déjà la connexion, mais on force la route
           // car le dashboard restaurateur n'est pas AuthGate
@@ -73,6 +101,10 @@ class _RestaurantOwnerLoginScreenState
           'Utilisez l\'écran de connexion client.',
         );
       }
+    } on LaravelSyncException catch (e) {
+      await UserAuthService.instance.signOut();
+      if (!mounted) return;
+      _showError(e.message);
     } on UserAuthException catch (e) {
       if (!mounted) return;
       _showError(e.message);
