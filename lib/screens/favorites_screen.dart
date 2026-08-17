@@ -130,10 +130,15 @@ class FavoritesScreen extends StatelessWidget {
 
   Widget _buildFavoriteCard(BuildContext context, RestaurantData restaurant) {
     return GestureDetector(
-      onTap: () => Navigator.pushNamed(
-        context,
-        '/restaurant-detail',
-      ),
+      onTap: () {
+        Provider.of<RestaurantService>(context, listen: false)
+            .selectRestaurant(restaurant.id);
+        Navigator.pushNamed(
+          context,
+          '/restaurant-detail',
+          arguments: restaurant.id,
+        );
+      },
       child: Container(
         margin: const EdgeInsets.only(bottom: 20),
         decoration: BoxDecoration(
@@ -213,8 +218,15 @@ class FavoritesScreen extends StatelessWidget {
                     ],
                   ),
                   ElevatedButton(
-                    onPressed: () =>
-                        Navigator.pushNamed(context, '/restaurant-detail'),
+                    onPressed: () {
+                      Provider.of<RestaurantService>(context, listen: false)
+                          .selectRestaurant(restaurant.id);
+                      Navigator.pushNamed(
+                        context,
+                        '/restaurant-detail',
+                        arguments: restaurant.id,
+                      );
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: violetFlavor.withOpacity(0.1),
                       elevation: 0,

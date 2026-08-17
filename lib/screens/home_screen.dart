@@ -139,54 +139,86 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildRestaurantsPage() {
-    return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
-      slivers: [
-        SliverToBoxAdapter(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeroHeader(),
-              _buildSectionTitle('Tous les restaurants', showSeeAll: false),
-              _buildCuisineCategories(),
-              _buildSectionTitle('Filtres', showSeeAll: false),
-              _buildFilters(),
-            ],
-          ),
-        ),
-        _buildRestaurantList(),
-        const SliverToBoxAdapter(child: SizedBox(height: 96)),
-      ],
+    return Consumer<RestaurantService>(
+      builder: (context, restaurantService, child) {
+        if (restaurantService.isLoading && !restaurantService.hasLoadedData) {
+          return _buildLoadingState('Chargement des restaurants…');
+        }
+
+        if (restaurantService.errorMessage != null &&
+            !restaurantService.hasLoadedData) {
+          return _buildErrorState(
+            restaurantService.errorMessage!,
+            () => restaurantService.loadRestaurants(forceRefresh: true),
+          );
+        }
+
+        return CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeroHeader(),
+                  _buildSectionTitle('Tous les restaurants', showSeeAll: false),
+                  _buildCuisineCategories(),
+                  _buildSectionTitle('Filtres', showSeeAll: false),
+                  _buildFilters(),
+                ],
+              ),
+            ),
+            _buildRestaurantList(),
+            const SliverToBoxAdapter(child: SizedBox(height: 96)),
+          ],
+        );
+      },
     );
   }
 
   Widget _buildHomeContent() {
-    return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
-      slivers: [
-        SliverToBoxAdapter(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeroHeader(),
-              _buildSectionTitle('Offres spéciales',
-                  showSeeAll: true, onTap: () => _onItemTapped(1)),
-              _buildPromoSlider(),
-              _buildSectionTitle('Cuisines',
-                  showSeeAll: true, onTap: () => _onItemTapped(1)),
-              _buildCuisineCategories(),
-              _buildSectionTitle('Recommandés',
-                  showSeeAll: true, onTap: () => _onItemTapped(1)),
-              _buildRecommendedRestaurants(),
-              _buildSectionTitle('Restaurants populaires',
-                  showSeeAll: true, onTap: () => _onItemTapped(1)),
-              _buildFilters(),
-            ],
-          ),
-        ),
-        _buildRestaurantList(),
-        const SliverToBoxAdapter(child: SizedBox(height: 96)),
-      ],
+    return Consumer<RestaurantService>(
+      builder: (context, restaurantService, child) {
+        if (restaurantService.isLoading && !restaurantService.hasLoadedData) {
+          return _buildLoadingState('Connexion au catalogue FlavorWay…');
+        }
+
+        if (restaurantService.errorMessage != null &&
+            !restaurantService.hasLoadedData) {
+          return _buildErrorState(
+            restaurantService.errorMessage!,
+            () => restaurantService.loadRestaurants(forceRefresh: true),
+          );
+        }
+
+        return CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeroHeader(),
+                  _buildSectionTitle('Offres spéciales',
+                      showSeeAll: true, onTap: () => _onItemTapped(1)),
+                  _buildPromoSlider(),
+                  _buildSectionTitle('Cuisines',
+                      showSeeAll: true, onTap: () => _onItemTapped(1)),
+                  _buildCuisineCategories(),
+                  _buildSectionTitle('Recommandés',
+                      showSeeAll: true, onTap: () => _onItemTapped(1)),
+                  _buildRecommendedRestaurants(),
+                  _buildSectionTitle('Restaurants populaires',
+                      showSeeAll: true, onTap: () => _onItemTapped(1)),
+                  _buildFilters(),
+                ],
+              ),
+            ),
+            _buildRestaurantList(),
+            const SliverToBoxAdapter(child: SizedBox(height: 96)),
+          ],
+        );
+      },
     );
   }
 
@@ -252,6 +284,68 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildLoadingState(String message) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(
+            width: 32,
+            height: 32,
+            child: CircularProgressIndicator(strokeWidth: 3),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            message,
+            style: GoogleFonts.poppins(
+              color: violetDark,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(String message, VoidCallback onRetry) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.wifi_off_rounded, size: 42, color: Colors.grey.shade500),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                color: violetDark,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: onRetry,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: violetFlavor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Réessayer',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -747,6 +841,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _startPromoAutoSlide();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<RestaurantService>().loadRestaurants();
+    });
   }
 
   void _startPromoAutoSlide() {
@@ -975,7 +1072,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       (restaurant) => GestureDetector(
                         onTap: () {
                           FocusScope.of(context).unfocus();
-                          Navigator.pushNamed(context, '/restaurant-detail');
+                          context
+                              .read<RestaurantService>()
+                              .selectRestaurant(restaurant.id);
+                          Navigator.pushNamed(
+                            context,
+                            '/restaurant-detail',
+                            arguments: restaurant.id,
+                          );
                         },
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 8),
@@ -1109,10 +1213,16 @@ class _HomeScreenState extends State<HomeScreen> {
               final restaurant = restaurants[index];
 
               return GestureDetector(
-                onTap: () => Navigator.pushNamed(
-                  context,
-                  '/restaurant-detail',
-                ),
+                onTap: () {
+                  context
+                      .read<RestaurantService>()
+                      .selectRestaurant(restaurant.id);
+                  Navigator.pushNamed(
+                    context,
+                    '/restaurant-detail',
+                    arguments: restaurant.id,
+                  );
+                },
                 child: Container(
                   width: MediaQuery.of(context).size.width - 48,
                   margin: EdgeInsets.only(
@@ -1402,7 +1512,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final bool hasMenuQr = restaurant.services.contains('Menu QR');
 
     return GestureDetector(
-      onTap: () => Navigator.pushNamed(context, '/restaurant-detail'),
+      onTap: () {
+        context.read<RestaurantService>().selectRestaurant(restaurant.id);
+        Navigator.pushNamed(
+          context,
+          '/restaurant-detail',
+          arguments: restaurant.id,
+        );
+      },
       child: Container(
         margin: const EdgeInsets.only(bottom: 18),
         decoration: BoxDecoration(

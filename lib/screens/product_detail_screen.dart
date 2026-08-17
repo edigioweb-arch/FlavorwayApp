@@ -1,19 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+
+import '../models/cart_item.dart';
+import '../models/restaurant_model.dart';
+import '../services/cart_service.dart';
 
 class ProductDetailScreen extends StatefulWidget {
+  const ProductDetailScreen({
+    super.key,
+    this.dish,
+    this.productName = '',
+    this.productImage = '',
+    this.productPrice = '',
+    this.productDescription = '',
+  });
+
+  final RestaurantDishModel? dish;
   final String productName;
   final String productImage;
   final String productPrice;
   final String productDescription;
-
-  const ProductDetailScreen({
-    super.key,
-    required this.productName,
-    required this.productImage,
-    required this.productPrice,
-    required this.productDescription,
-  });
 
   @override
   State<ProductDetailScreen> createState() => _ProductDetailScreenState();
@@ -24,66 +31,44 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   static const Color violetFlavor = Color(0xFF4B1F5C);
 
   int quantity = 1;
-  bool spicy = false;
-  String cookingLevel = 'Moyen';
-  List<String> selectedExtras = [];
-  String selectedDrink = 'Sans boisson';
 
-  final List<Map<String, dynamic>> extras = [
-    {'name': 'Fromage', 'price': '500 CFA'},
-    {'name': 'Oignon', 'price': '200 CFA'},
-    {'name': 'Piment', 'price': '300 CFA'},
-  ];
-
-  final List<String> cookingLevels = [
-    'Saignant',
-    'À point',
-    'Bien cuit',
-    'Moyen'
-  ];
-  final List<Map<String, dynamic>> drinks = [
-    {'name': 'Sans boisson', 'price': '0 CFA'},
-    {'name': 'Bissap', 'price': '1000 CFA'},
-    {'name': 'Gnamakoudji', 'price': '1200 CFA'},
-    {'name': 'Soda', 'price': '800 CFA'},
-  ];
-
-  double get totalPrice {
-    double basePrice = double.parse(
-        widget.productPrice.replaceAll(' CFA', '').replaceAll(',', ''));
-    double extrasPrice = selectedExtras.length * 300; // average
-    double drinkPrice = selectedDrink == 'Sans boisson' ? 0 : 1000;
-    return basePrice + extrasPrice + drinkPrice;
-  }
+  String get _name => widget.dish?.name ?? widget.productName;
+  String get _description =>
+      widget.dish?.description ?? widget.productDescription;
+  String? get _image => widget.dish?.image ?? widget.productImage;
+  double get _price => widget.dish?.price ?? _parseLegacyPrice(widget.productPrice);
+  String get _priceText =>
+      widget.dish?.priceText ?? '${_price.toStringAsFixed(0)} FCFA';
+  bool get _hasOptions => (widget.dish?.options ?? const []).isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
+    final total = _price * quantity;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: violetFlavor,
+        backgroundColor: Colors.white,
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_ios_new, color: violetFlavor),
+          onPressed: () => Navigator.maybePop(context),
         ),
         title: Text(
-          widget.productName,
+          _name,
           style: GoogleFonts.poppins(
-              color: Colors.white, fontWeight: FontWeight.bold),
+            color: violetFlavor,
+            fontWeight: FontWeight.w700,
+            fontSize: 18,
+          ),
         ),
       ),
       body: Column(
         children: [
-          // Image produit
-          Container(
-            height: 280,
+          SizedBox(
+            height: 260,
             width: double.infinity,
-            decoration: BoxDecoration(
-              image: DecorationImage(
-                image: AssetImage(widget.productImage),
-                fit: BoxFit.cover,
-              ),
-            ),
+            child: _buildImage(),
           ),
           Expanded(
             child: SingleChildScrollView(
@@ -92,168 +77,177 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.productName,
-                            style: GoogleFonts.poppins(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _name,
+                              style: GoogleFonts.poppins(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w700,
+                                color: violetFlavor,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            '⭐ 4.8 (127 avis)',
-                            style: TextStyle(
-                                color: Colors.amber,
-                                fontWeight: FontWeight.w600),
-                          ),
-                        ],
+                            const SizedBox(height: 8),
+                            Text(
+                              _description,
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                height: 1.5,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 14),
                       Text(
-                        '${totalPrice.toStringAsFixed(0)} CFA',
+                        _priceText,
                         style: GoogleFonts.poppins(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
                           color: orangeFlavor,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 22),
+                  if (_hasOptions) ...[
+                    Text(
+                      'Options disponibles',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: violetFlavor,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    ...widget.dish!.options.map(
+                      (option) => Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF7F4FB),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              option.name,
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: violetFlavor,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              option.values.isEmpty
+                                  ? 'Aucune valeur publiée.'
+                                  : option.values
+                                      .map((value) => value.name)
+                                      .join(' • '),
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
                   Text(
-                    widget.productDescription,
+                    'Quantité',
                     style: GoogleFonts.poppins(
-                      height: 1.5,
-                      color: Colors.black87,
                       fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: violetFlavor,
                     ),
                   ),
-                  const SizedBox(height: 25),
-
-                  // Options
-                  _buildOptionSection(
-                      'Cuisson',
-                      DropdownButton<String>(
-                        value: cookingLevel,
-                        isExpanded: true,
-                        underline: Container(),
-                        items: cookingLevels
-                            .map((level) => DropdownMenuItem(
-                                  value: level,
-                                  child: Text(level),
-                                ))
-                            .toList(),
-                        onChanged: (value) =>
-                            setState(() => cookingLevel = value!),
-                      )),
-
-                  _buildOptionSection(
-                      'Piquant',
-                      CheckboxListTile(
-                        title:
-                            Text('Extra piment', style: GoogleFonts.poppins()),
-                        value: spicy,
-                        onChanged: (value) => setState(() => spicy = value!),
-                        controlAffinity: ListTileControlAffinity.leading,
-                        activeColor: orangeFlavor,
-                      )),
-
-                  _buildOptionSection(
-                      'Suppléments',
-                      Column(
-                        children: extras
-                            .map((extra) => CheckboxListTile(
-                                  title: Text(extra['name'],
-                                      style: GoogleFonts.poppins()),
-                                  subtitle: Text(extra['price']),
-                                  value: selectedExtras.contains(extra['name']),
-                                  onChanged: (value) {
-                                    setState(() {
-                                      if (value!) {
-                                        selectedExtras.add(extra['name']);
-                                      } else {
-                                        selectedExtras.remove(extra['name']);
-                                      }
-                                    });
-                                  },
-                                  controlAffinity:
-                                      ListTileControlAffinity.leading,
-                                  activeColor: orangeFlavor,
-                                ))
-                            .toList(),
-                      )),
-
-                  _buildOptionSection(
-                      'Accompagnement',
-                      DropdownButton<String>(
-                        value: selectedDrink,
-                        isExpanded: true,
-                        underline: Container(),
-                        items: drinks
-                            .map<DropdownMenuItem<String>>(
-                                (drink) => DropdownMenuItem<String>(
-                                      value: drink['name'],
-                                      child: Text(
-                                          '${drink['name']} - ${drink['price']}'),
-                                    ))
-                            .toList(),
-                        onChanged: (value) =>
-                            setState(() => selectedDrink = value!),
-                      )),
-
-                  const SizedBox(height: 30),
-
-                  // Quantité
-                  _buildQuantityRow(),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      _quantityButton(Icons.remove, () {
+                        if (quantity > 1) {
+                          setState(() => quantity -= 1);
+                        }
+                      }),
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 14),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF7F4FB),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '$quantity',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: violetFlavor,
+                          ),
+                        ),
+                      ),
+                      _quantityButton(Icons.add, () {
+                        setState(() => quantity += 1);
+                      }),
+                    ],
+                  ),
                 ],
               ),
             ),
           ),
         ],
       ),
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 20,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: SizedBox(
-          height: 60,
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: orangeFlavor,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30)),
-              elevation: 0,
-            ),
-            onPressed: () {
-              // Add to cart logic
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                      '${widget.productName} (${quantity}x) ajouté au panier!'),
-                  backgroundColor: orangeFlavor,
-                  duration: const Duration(seconds: 2),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          child: SizedBox(
+            height: 54,
+            child: ElevatedButton(
+              onPressed: () {
+                context.read<CartService>().addItem(
+                      CartItem(
+                        id: widget.dish?.id ?? _name,
+                        name: _name,
+                        image: _image ?? '',
+                        restaurantName:
+                            widget.dish?.menuName ?? 'Restaurant FlavorWay',
+                        price: _price,
+                        quantity: quantity,
+                      ),
+                    );
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Produit ajouté au panier'),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: violetFlavor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
-              );
-              Navigator.pop(context);
-            },
-            child: Text(
-              'Ajouter au panier • ${totalPrice.toStringAsFixed(0)} CFA',
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+              ),
+              child: Text(
+                'Ajouter • ${total.toStringAsFixed(0)} FCFA',
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -262,87 +256,57 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _buildOptionSection(String title, Widget child) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
+  Widget _buildImage() {
+    final path = _image;
+
+    if (path == null || path.isEmpty) {
+      return Container(
+        color: Colors.grey.shade100,
+        child: const Icon(Icons.fastfood_rounded, size: 52, color: violetFlavor),
+      );
+    }
+
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return Image.network(
+        path,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          color: Colors.grey.shade100,
+          child:
+              const Icon(Icons.fastfood_rounded, size: 52, color: violetFlavor),
         ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-          child: child,
-        ),
-        const SizedBox(height: 20),
-      ],
+      );
+    }
+
+    return Image.asset(
+      path,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => Container(
+        color: Colors.grey.shade100,
+        child: const Icon(Icons.fastfood_rounded, size: 52, color: violetFlavor),
+      ),
     );
   }
 
-  Widget _buildQuantityRow() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Quantité',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
+  Widget _quantityButton(IconData icon, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7F4FB),
+          borderRadius: BorderRadius.circular(12),
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: IconButton(
-                onPressed:
-                    quantity > 1 ? () => setState(() => quantity--) : null,
-                icon: const Icon(Icons.remove, color: Colors.grey),
-              ),
-            ),
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '$quantity',
-                style: GoogleFonts.poppins(
-                    fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: IconButton(
-                onPressed: () => setState(() => quantity++),
-                icon: const Icon(Icons.add, color: Colors.grey),
-              ),
-            ),
-          ],
-        ),
-      ],
+        child: Icon(icon, color: violetFlavor),
+      ),
     );
+  }
+
+  double _parseLegacyPrice(String raw) {
+    final normalized = raw.replaceAll('CFA', '').replaceAll('FCFA', '').trim();
+    return double.tryParse(normalized.replaceAll(' ', '').replaceAll(',', '.')) ??
+        0;
   }
 }
