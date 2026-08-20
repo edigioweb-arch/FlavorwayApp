@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../models/city_model.dart';
+import '../services/city_service.dart';
 import '../services/restaurant_service.dart';
 import '../services/notification_service.dart';
 import 'favorites_screen.dart';
@@ -23,6 +25,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedFilter = 0;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  CityService? _cityService;
+  String? _lastLoadedCityId;
 
   int _currentPromoIndex = 0;
   final PageController _promoController = PageController(viewportFraction: 1);
@@ -350,6 +354,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHeroHeader() {
+    final cityService = context.watch<CityService>();
+    final selectedCity = cityService.selectedCity;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 30),
@@ -424,7 +431,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             const SizedBox(width: 5),
                             Flexible(
                               child: Text(
-                                'Brazzaville, Congo',
+                                selectedCity?.displayLabel ??
+                                    (cityService.isLoading
+                                        ? 'Chargement des villes...'
+                                        : 'Choisir une ville'),
                                 overflow: TextOverflow.ellipsis,
                                 style: GoogleFonts.poppins(
                                   color: Colors.white,
@@ -434,10 +444,15 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                             const SizedBox(width: 3),
-                            const Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              color: orangeFlavor,
-                              size: 20,
+                            GestureDetector(
+                              onTap: cityService.cities.isEmpty
+                                  ? null
+                                  : () => _showCityPicker(cityService.cities),
+                              child: const Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: orangeFlavor,
+                                size: 20,
+                              ),
                             ),
                           ],
                         ),
@@ -841,9 +856,47 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _startPromoAutoSlide();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final cityService = context.read<CityService>();
+
+    if (_cityService == cityService) {
+      return;
+    }
+
+    _cityService?.removeListener(_handleCityStateChanged);
+    _cityService = cityService;
+    _cityService?.addListener(_handleCityStateChanged);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<RestaurantService>().loadRestaurants();
+      _handleCityStateChanged();
     });
+  }
+
+  Future<void> _handleCityStateChanged() async {
+    if (!mounted || _cityService == null) {
+      return;
+    }
+
+    final restaurantService = context.read<RestaurantService>();
+    final cityId = _cityService?.selectedCity?.id;
+    final shouldReload = cityId != _lastLoadedCityId ||
+        !restaurantService.hasLoadedData ||
+        restaurantService.errorMessage != null;
+
+    if (_cityService!.isLoading || cityId == null || !shouldReload) {
+      return;
+    }
+
+    _lastLoadedCityId = cityId;
+    await restaurantService.loadRestaurants(
+          forceRefresh: true,
+          cityId: cityId,
+        );
   }
 
   void _startPromoAutoSlide() {
@@ -862,10 +915,49 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _cityService?.removeListener(_handleCityStateChanged);
     _promoTimer?.cancel();
     _promoController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _showCityPicker(List<CityModel> cities) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: cities
+                .map(
+                  (city) => ListTile(
+                    title: Text(city.name),
+                    subtitle: Text(
+                      city.isLaunched
+                          ? city.countryName
+                          : '${city.countryName} • Bientôt disponible',
+                    ),
+                    trailing: city.id == context.read<CityService>().selectedCity?.id
+                        ? const Icon(Icons.check, color: orangeFlavor)
+                        : null,
+                    onTap: () async {
+                      await context.read<CityService>().selectCity(city);
+                      if (!sheetContext.mounted) {
+                        return;
+                      }
+                      Navigator.pop(sheetContext);
+                    },
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildSectionTitle(String title,
@@ -1901,21 +1993,4 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-}
-
-class _PromoImageClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    final path = Path();
-    path.moveTo(size.width * 0.22, 0);
-    path.quadraticBezierTo(
-        0, size.height * 0.5, size.width * 0.22, size.height);
-    path.lineTo(size.width, size.height);
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }

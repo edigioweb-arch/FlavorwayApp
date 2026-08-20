@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/restaurant_subscription_model.dart';
 import '../../services/restaurant_service.dart';
+import '../../services/restaurant_subscription_service.dart';
 
 class RestaurantDashboardScreen extends StatelessWidget {
   const RestaurantDashboardScreen({super.key});
@@ -17,9 +19,22 @@ class RestaurantDashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<RestaurantService>(
-      builder: (context, restaurantService, child) {
+    return Consumer2<RestaurantService, RestaurantSubscriptionService>(
+      builder: (context, restaurantService, subscriptionService, child) {
         final restaurant = restaurantService.joliCoin;
+        final subscription = subscriptionService.subscription;
+
+        if (!subscriptionService.isLoading &&
+            subscriptionService.subscription == null &&
+            subscriptionService.errorMessage == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) {
+              context
+                  .read<RestaurantSubscriptionService>()
+                  .loadCurrentSubscription();
+            }
+          });
+        }
 
         return Scaffold(
           backgroundColor: background,
@@ -58,7 +73,7 @@ class RestaurantDashboardScreen extends StatelessWidget {
                             const SizedBox(height: 16),
                             _buildQuickActions(context, width),
                             const SizedBox(height: 18),
-                            _buildPremiumCard(),
+                            _buildPremiumCard(subscription, subscriptionService),
                           ],
                         ),
                       ),
@@ -651,7 +666,17 @@ class RestaurantDashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPremiumCard() {
+  Widget _buildPremiumCard(
+    RestaurantSubscriptionModel? subscription,
+    RestaurantSubscriptionService subscriptionService,
+  ) {
+    final isPremium = subscription?.isPremium == true;
+    final title = isPremium ? 'Premium actif ✨' : 'Passez à Premium ✨';
+    final description = isPremium
+        ? 'Plan ${subscription?.plan?.name ?? 'Premium'} actif'
+            '${subscription?.endsAt != null ? '\nExpire le ${_formatDate(subscription!.endsAt!)}' : ''}'
+        : 'Débloquez plus de fonctionnalités\net boostez votre visibilité';
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       decoration: _surface(radius: 22),
@@ -676,7 +701,7 @@ class RestaurantDashboardScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Passez à Premium ✨',
+                  title,
                   style: GoogleFonts.poppins(
                     color: primaryDark,
                     fontSize: 15,
@@ -685,7 +710,7 @@ class RestaurantDashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  'Débloquez plus de fonctionnalités\net boostez votre visibilité',
+                  description,
                   style: GoogleFonts.poppins(
                     color: muted,
                     fontSize: 13,
@@ -704,18 +729,31 @@ class RestaurantDashboardScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: orange, width: 1.3),
             ),
-            child: Text(
-              'Découvrir',
-              style: GoogleFonts.poppins(
-                color: orange,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            child: subscriptionService.isLoading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(
+                    isPremium ? 'Gérer' : 'Découvrir',
+                    style: GoogleFonts.poppins(
+                      color: orange,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
           ),
         ],
       ),
     );
+  }
+
+  String _formatDate(DateTime date) {
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+    return '$day/$month/$year';
   }
 
   Widget _buildBottomBar() {

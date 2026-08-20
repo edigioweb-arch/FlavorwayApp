@@ -1,413 +1,210 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-const Color orangeFlavor = Color(0xFFF36A2D);
-const Color violetFlavor = Color(0xFF4B1F5C);
-const Color softBg = Color(0xFFF8F4FA);
-const Color violetDark = Color(0xFF2A0D35);
+import '../../services/restaurant_workspace_service.dart';
 
-class RestaurantDashboardScreen extends StatelessWidget {
+class RestaurantDashboardScreen extends StatefulWidget {
   const RestaurantDashboardScreen({super.key});
 
   @override
+  State<RestaurantDashboardScreen> createState() => _RestaurantDashboardScreenState();
+}
+
+class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
+  Map<String, dynamic>? _dashboard;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await RestaurantWorkspaceService.instance.fetchDashboard();
+      if (!mounted) return;
+      setState(() {
+        _dashboard = data;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Impossible de charger le dashboard restaurateur.';
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final restaurant = Map<String, dynamic>.from((_dashboard?['restaurant'] as Map?) ?? const {});
+    final stats = Map<String, dynamic>.from((_dashboard?['stats'] as Map?) ?? const {});
+    final subscription = Map<String, dynamic>.from((_dashboard?['subscription'] as Map?) ?? const {});
+    final recentOrders = ((_dashboard?['recent_orders'] as List?) ?? const []).whereType<Map>().toList(growable: false);
+
     return Scaffold(
-      backgroundColor: softBg,
-      body: SafeArea(
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
-                decoration: const BoxDecoration(
-                  color: violetFlavor,
-                  borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(28),
-                    bottomRight: Radius.circular(28),
-                  ),
+      backgroundColor: const Color(0xFFF7F5FB),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: Text(
+          restaurant['name']?.toString() ?? 'Espace restaurant',
+          style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+        ),
+      ),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.all(18),
+          children: [
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.all(40),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              _panel(
+                child: Column(
+                  children: [
+                    Text(_error!, textAlign: TextAlign.center),
+                    const SizedBox(height: 12),
+                    OutlinedButton(onPressed: _load, child: const Text('Réessayer')),
+                  ],
                 ),
+              )
+            else ...[
+              _panel(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Container(
-                          width: 46,
-                          height: 46,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(90),
-                          ),
-                          child: const Icon(
-                            Icons.storefront_rounded,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 9,
-                          ),
-                          decoration: BoxDecoration(
-                            color: orangeFlavor,
-                            borderRadius: BorderRadius.circular(90),
-                          ),
+                        Expanded(
                           child: Text(
-                            'Ouvert',
-                            style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                            ),
+                            restaurant['name']?.toString() ?? 'Restaurant',
+                            style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800),
                           ),
                         ),
+                        _statusChip(restaurant['is_open'] == true ? 'Ouvert' : 'Fermé'),
                       ],
                     ),
-                    const SizedBox(height: 26),
-                    Text(
-                      'Tableau de bord',
-                      style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 30,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
                     const SizedBox(height: 8),
                     Text(
-                      'Joli Coin Restaurant',
-                      style: GoogleFonts.poppins(
-                        color: orangeFlavor,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                      ),
+                      [
+                        restaurant['cuisine_type'],
+                        restaurant['city'],
+                        restaurant['opening_hours'],
+                      ].whereType<String>().where((value) => value.trim().isNotEmpty).join(' • '),
+                      style: GoogleFonts.inter(color: const Color(0xFF6F7390)),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Text(
-                      'Gérez vos menus, commandes, horaires, photos et échanges clients.',
-                      style: GoogleFonts.poppins(
-                        color: Colors.white.withOpacity(0.75),
-                        fontSize: 13,
-                        height: 1.45,
-                        fontWeight: FontWeight.w500,
-                      ),
+                      'Abonnement: ${(subscription['plan'] ?? 'standard').toString().toUpperCase()} • ${subscription['status'] ?? 'pending'}',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w700),
                     ),
                   ],
                 ),
               ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.all(20),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate(
-                  [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildStatCard(
-                            '15 500 FCFA',
-                            'Revenus aujourd’hui',
-                            Icons.trending_up_rounded,
-                            orangeFlavor,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildStatCard(
-                            '28',
-                            'Commandes',
-                            Icons.receipt_long_rounded,
-                            violetFlavor,
-                          ),
-                        ),
-                      ],
-                    ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  _statCard('Commandes du jour', '${stats['orders_today'] ?? 0}'),
+                  _statCard('Commandes actives', '${stats['orders_pending'] ?? 0}'),
+                  _statCard('Réservations', '${stats['reservations_total'] ?? 0}'),
+                  _statCard('CA réel', '${((stats['revenue_today'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)} XAF'),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _panel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Commandes récentes', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800)),
                     const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildStatCard(
-                            '124',
-                            'Clients',
-                            Icons.people_alt_rounded,
-                            Colors.green,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildStatCard(
-                            '4.7',
-                            'Note moyenne',
-                            Icons.star_rounded,
-                            Colors.amber,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 26),
-                    Text(
-                      'Gestion du restaurant',
-                      style: GoogleFonts.poppins(
-                        color: violetDark,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    GridView.count(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 14,
-                      mainAxisSpacing: 14,
-                      childAspectRatio: 1.02,
-                      children: [
-                        _buildActionCard(
-                          'Menus',
-                          'Modifier plats & prix',
-                          Icons.restaurant_menu_rounded,
-                          orangeFlavor,
-                          () {},
-                        ),
-                        _buildActionCard(
-                          'Horaires',
-                          'Ouverture restaurant',
-                          Icons.access_time_rounded,
-                          Colors.green,
-                          () {},
-                        ),
-                        _buildActionCard(
-                          'Photos',
-                          'Galerie & cover',
-                          Icons.photo_library_rounded,
-                          Colors.purple,
-                          () {},
-                        ),
-                        _buildActionCard(
-                          'Commandes',
-                          'Suivi des commandes',
-                          Icons.delivery_dining_rounded,
-                          Colors.blue,
-                          () {},
-                        ),
-                        _buildActionCard(
-                          'Messages',
-                          'Discussion clients',
-                          Icons.chat_bubble_rounded,
-                          Colors.teal,
-                          () {},
-                        ),
-                        _buildActionCard(
-                          'Support',
-                          'Service client FlavorWay',
-                          Icons.support_agent_rounded,
-                          violetFlavor,
-                          () {},
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 26),
-                    Text(
-                      'Activité récente',
-                      style: GoogleFonts.poppins(
-                        color: violetDark,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    _activityCard(
-                      'Nouvelle commande reçue',
-                      'Table 4 • Poulet Mayo • il y a 2 min',
-                      Icons.receipt_long_rounded,
-                    ),
-                    _activityCard(
-                      'Nouveau message client',
-                      'Question sur la livraison • il y a 10 min',
-                      Icons.chat_rounded,
-                    ),
-                    _activityCard(
-                      'Réservation confirmée',
-                      '2 personnes • 20h30',
-                      Icons.event_available_rounded,
-                    ),
-                    const SizedBox(height: 20),
+                    if (recentOrders.isEmpty)
+                      Text(
+                        'Aucune commande réelle disponible pour le moment.',
+                        style: GoogleFonts.inter(color: const Color(0xFF6F7390)),
+                      )
+                    else
+                      ...recentOrders.map((order) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    (order['order_number'] ?? '').toString(),
+                                    style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                                  ),
+                                ),
+                                Text(
+                                  '${((order['total'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)} ${(order['currency'] ?? 'XAF')}',
+                                  style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
+                          )),
                   ],
                 ),
               ),
-            ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatCard(
-    String value,
-    String title,
-    IconData icon,
-    Color color,
-  ) {
+  Widget _panel({required Widget child}) {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 5),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFECE6F6)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(90),
-            ),
-            child: Icon(icon, color: color, size: 24),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            value,
-            style: GoogleFonts.poppins(
-              color: violetDark,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: GoogleFonts.poppins(
-              color: Colors.grey.shade500,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
+      child: child,
     );
   }
 
-  Widget _buildActionCard(
-    String title,
-    String subtitle,
-    IconData icon,
-    Color color,
-    VoidCallback onTap,
-  ) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 12,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
+  Widget _statCard(String label, String value) {
+    return SizedBox(
+      width: 160,
+      child: _panel(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(90),
-              ),
-              child: Icon(icon, color: color, size: 26),
-            ),
-            const Spacer(),
-            Text(
-              title,
-              style: GoogleFonts.poppins(
-                color: violetDark,
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.poppins(
-                color: Colors.grey.shade500,
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+            Text(label, style: GoogleFonts.inter(color: const Color(0xFF6F7390), fontSize: 12)),
+            const SizedBox(height: 8),
+            Text(value, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800)),
           ],
         ),
       ),
     );
   }
 
-  Widget _activityCard(String title, String subtitle, IconData icon) {
+  Widget _statusChip(String label) {
+    final open = label.toLowerCase() == 'ouvert';
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: (open ? Colors.green : Colors.red).withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: orangeFlavor.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(90),
-            ),
-            child: Icon(icon, color: orangeFlavor),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.poppins(
-                    color: violetDark,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: GoogleFonts.poppins(
-                    color: Colors.grey.shade500,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+      child: Text(
+        label,
+        style: GoogleFonts.inter(
+          color: open ? Colors.green : Colors.red,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }

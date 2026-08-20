@@ -23,7 +23,7 @@ class PaymentMethodService extends ChangeNotifier {
   }
 
   final List<PaymentMethod> _methods = [
-    PaymentMethod(name: 'Airtel Money', subtitle: '1234', type: 'orange'),
+    PaymentMethod(name: 'Airtel Money', subtitle: '1234', type: 'airtel'),
     PaymentMethod(name: 'MTN MoMo', subtitle: '5678', type: 'mtn'),
     PaymentMethod(name: 'Visa ****9012', subtitle: '9012', type: 'visa'),
     PaymentMethod(
@@ -38,12 +38,19 @@ class PaymentMethodService extends ChangeNotifier {
     ),
   ];
 
-  int _selectedIndex = 3;
+  int _selectedIndex = 4;
   bool _isLoaded = false;
 
   List<PaymentMethod> get methods => List.unmodifiable(_methods);
   int get selectedIndex => _selectedIndex;
   PaymentMethod get selectedMethod => _methods[_selectedIndex];
+
+  void _debugLog(String message) {
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print(message);
+    }
+  }
 
   CollectionReference<Map<String, dynamic>>? get _paymentCollection {
     final uid = UserAuthService.instance.currentUser?.uid;
@@ -89,7 +96,9 @@ class PaymentMethodService extends ChangeNotifier {
         _selectedIndex = 0;
       }
       notifyListeners();
-    } catch (_) {}
+    } catch (error) {
+      _debugLog('Chargement moyens de paiement ignoré: $error');
+    }
   }
 
   Future<void> _saveAll() async {
@@ -112,7 +121,9 @@ class PaymentMethodService extends ChangeNotifier {
           'createdAt': FieldValue.serverTimestamp(),
         });
       }
-    } catch (_) {}
+    } catch (error) {
+      _debugLog('Sauvegarde moyens de paiement ignorée: $error');
+    }
   }
 
   void selectMethod(int index) {

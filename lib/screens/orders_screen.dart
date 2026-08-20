@@ -113,12 +113,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
               context,
               restaurant: order.restaurantName,
               date: _formatDate(order.createdAt),
-              price: '${order.total.toStringAsFixed(0)} CFA',
-              items: '${order.items.length} article(s)',
-              status: order.status,
+              price: '${order.total.toStringAsFixed(0)} ${order.currency}',
+              items:
+                  '${order.items.fold<int>(0, (sum, item) => sum + item.quantity)} article(s)',
+              status: order.displayStatus,
               statusColor: Colors.orange,
               isActive: true,
-              orderId: order.orderId,
+              orderId: order.orderNumber,
             );
           },
         );
@@ -155,13 +156,15 @@ class _OrdersScreenState extends State<OrdersScreen> {
               context,
               restaurant: order.restaurantName,
               date: _formatDate(order.createdAt),
-              price: '${order.total.toStringAsFixed(0)} CFA',
-              items: '${order.items.length} article(s)',
-              status: order.status,
-              statusColor:
-                  order.status == 'Livré' ? Colors.green : Colors.orange,
+              price: '${order.total.toStringAsFixed(0)} ${order.currency}',
+              items:
+                  '${order.items.fold<int>(0, (sum, item) => sum + item.quantity)} article(s)',
+              status: order.displayStatus,
+              statusColor: order.status == 'delivered'
+                  ? Colors.green
+                  : Colors.orange,
               isActive: false,
-              orderId: order.orderId,
+              orderId: order.orderNumber,
             );
           },
         );

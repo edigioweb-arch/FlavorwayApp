@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/message_model.dart';
 import 'notification_service.dart';
@@ -19,24 +19,6 @@ class MessageService extends ChangeNotifier {
       lastMessageTime: DateTime.now(),
       unreadCount: 0,
     ),
-    ConversationModel(
-      id: 'restaurant_joli_coin',
-      title: 'Joli Coin',
-      avatar: 'assets/images/restaurants/joli_coin/cover.png',
-      type: ConversationType.restaurant,
-      lastMessage: 'Bonjour, votre commande est bien reçue.',
-      lastMessageTime: DateTime.now().subtract(const Duration(minutes: 12)),
-      unreadCount: 2,
-    ),
-    ConversationModel(
-      id: 'courier_jean_m',
-      title: 'Jean M. - Livreur',
-      avatar: '',
-      type: ConversationType.courier,
-      lastMessage: 'Je suis en route vers vous.',
-      lastMessageTime: DateTime.now().subtract(const Duration(minutes: 4)),
-      unreadCount: 1,
-    ),
   ];
 
   final Map<String, List<MessageModel>> _messages = {
@@ -52,62 +34,14 @@ class MessageService extends ChangeNotifier {
         isRead: true,
       ),
     ],
-    'restaurant_joli_coin': [
-      MessageModel(
-        id: 'msg_1',
-        conversationId: 'restaurant_joli_coin',
-        senderId: 'restaurant_joli_coin',
-        senderName: 'Joli Coin',
-        content: 'Bonjour, votre commande est bien reçue.',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 18)),
-        isMe: false,
-        isRead: false,
-      ),
-      MessageModel(
-        id: 'msg_2',
-        conversationId: 'restaurant_joli_coin',
-        senderId: 'client_current',
-        senderName: 'Vous',
-        content: 'Merci, je reste disponible.',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 14)),
-        isMe: true,
-        isRead: true,
-      ),
-      MessageModel(
-        id: 'msg_3',
-        conversationId: 'restaurant_joli_coin',
-        senderId: 'restaurant_joli_coin',
-        senderName: 'Joli Coin',
-        content: 'Votre plat est en préparation.',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 12)),
-        isMe: false,
-        isRead: false,
-      ),
-    ],
-    'courier_jean_m': [
-      MessageModel(
-        id: 'msg_4',
-        conversationId: 'courier_jean_m',
-        senderId: 'courier_jean_m',
-        senderName: 'Jean M.',
-        content: 'Bonjour, je viens de récupérer votre commande.',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 9)),
-        isMe: false,
-        isRead: false,
-      ),
-      MessageModel(
-        id: 'msg_5',
-        conversationId: 'courier_jean_m',
-        senderId: 'courier_jean_m',
-        senderName: 'Jean M.',
-        content: 'Je suis en route vers vous.',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 4)),
-        isMe: false,
-        isRead: false,
-      ),
-    ],
   };
   bool _isLoaded = false;
+
+  void _debugLog(String message) {
+    if (kDebugMode) {
+      debugPrint('=== MESSAGE SERVICE === $message');
+    }
+  }
 
   CollectionReference<Map<String, dynamic>>? get _conversationCollection {
     final uid = UserAuthService.instance.currentUser?.uid;
@@ -117,6 +51,8 @@ class MessageService extends ChangeNotifier {
         .doc(uid)
         .collection('conversations');
   }
+
+  String? get _currentUid => UserAuthService.instance.currentUser?.uid;
 
   Future<void> _load() async {
     if (_isLoaded) return;
@@ -173,7 +109,9 @@ class MessageService extends ChangeNotifier {
       }
 
       notifyListeners();
-    } catch (_) {}
+    } catch (error) {
+      _debugLog('Chargement conversations impossible: $error');
+    }
   }
 
   Future<void> _saveAll() async {
@@ -198,6 +136,15 @@ class MessageService extends ChangeNotifier {
           await doc.reference.delete();
         }
         for (final message in _messages[conversation.id] ?? []) {
+          final currentUid = _currentUid;
+          final canPersistMessage = currentUid != null &&
+              message.senderId == currentUid &&
+              message.isMe;
+
+          if (!canPersistMessage) {
+            continue;
+          }
+
           await messagesCollection.doc(message.id).set({
             'senderId': message.senderId,
             'senderName': message.senderName,
@@ -211,7 +158,9 @@ class MessageService extends ChangeNotifier {
           });
         }
       }
-    } catch (_) {}
+    } catch (error) {
+      _debugLog('Sauvegarde conversations impossible: $error');
+    }
   }
 
   ConversationType _typeFromString(String? value) {
@@ -254,11 +203,13 @@ class MessageService extends ChangeNotifier {
     final trimmedContent = content.trim();
 
     if (trimmedContent.isEmpty) return;
+    final currentUid = _currentUid;
+    if (currentUid == null) return;
 
     final message = MessageModel(
       id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
       conversationId: conversationId,
-      senderId: 'client_current',
+      senderId: currentUid,
       senderName: 'Vous',
       content: trimmedContent,
       timestamp: DateTime.now(),
@@ -291,10 +242,13 @@ class MessageService extends ChangeNotifier {
     required String conversationId,
     required String imagePath,
   }) {
+    final currentUid = _currentUid;
+    if (currentUid == null) return;
+
     final message = MessageModel(
       id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
       conversationId: conversationId,
-      senderId: 'client_current',
+      senderId: currentUid,
       senderName: 'Vous',
       content: 'Image envoyée',
       timestamp: DateTime.now(),
@@ -329,10 +283,13 @@ class MessageService extends ChangeNotifier {
     required double latitude,
     required double longitude,
   }) {
+    final currentUid = _currentUid;
+    if (currentUid == null) return;
+
     final message = MessageModel(
       id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
       conversationId: conversationId,
-      senderId: 'client_current',
+      senderId: currentUid,
       senderName: 'Vous',
       content: 'Position partagée',
       timestamp: DateTime.now(),

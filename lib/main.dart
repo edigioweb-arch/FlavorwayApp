@@ -4,9 +4,12 @@ import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'services/cart_service.dart';
+import 'services/city_service.dart';
 import 'services/restaurant_service.dart';
+import 'services/restaurant_subscription_service.dart';
 import 'services/message_service.dart';
 import 'services/notification_service.dart';
+import 'services/notification_navigation_service.dart';
 import 'services/locale_service.dart';
 import 'services/user_auth_service.dart';
 import 'screens/messages_screen.dart';
@@ -39,6 +42,7 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  await NotificationService.instance.initialize();
 
   // UserAuthService est placé en provider racine DIRECT, au-dessus de tout,
   // pour éviter toute coupure de contexte (Navigator, MaterialApp, routes).
@@ -50,7 +54,9 @@ void main() async {
       child: MultiProvider(
         providers: [
           ChangeNotifierProvider(create: (_) => CartService()),
+          ChangeNotifierProvider(create: (_) => CityService()),
           ChangeNotifierProvider(create: (_) => RestaurantService()),
+          ChangeNotifierProvider(create: (_) => RestaurantSubscriptionService()),
           ChangeNotifierProvider(create: (_) => MessageService()),
           ChangeNotifierProvider.value(value: NotificationService.instance),
           ChangeNotifierProvider.value(value: LocaleService.instance),
@@ -71,6 +77,7 @@ class FlavorWayApp extends StatelessWidget {
         return MaterialApp(
           title: 'FlavorWay',
           debugShowCheckedModeBanner: false,
+          navigatorKey: NotificationNavigationService.instance.navigatorKey,
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
@@ -106,9 +113,21 @@ class FlavorWayApp extends StatelessWidget {
             '/checkout': (context) => const CheckoutScreen(),
             '/order-success': (context) => const OrderSuccessScreen(),
             '/order-tracking': (context) {
-              final orderId =
-                  ModalRoute.of(context)?.settings.arguments as String? ?? '';
-              return OrderTrackingScreen(orderId: orderId);
+              final rawArguments = ModalRoute.of(context)?.settings.arguments;
+              String orderReference = '';
+
+              if (rawArguments is String) {
+                orderReference = rawArguments;
+              } else if (rawArguments is Map) {
+                orderReference =
+                    (rawArguments['order_reference'] ??
+                            rawArguments['order_number'] ??
+                            rawArguments['order_id'] ??
+                            '')
+                        .toString();
+              }
+
+              return OrderTrackingScreen(orderReference: orderReference);
             },
             '/chat': (context) => const ChatScreen(
                   conversationId: 'restaurant_joli_coin',

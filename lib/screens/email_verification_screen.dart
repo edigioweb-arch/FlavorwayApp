@@ -12,7 +12,12 @@ import '../services/user_auth_service.dart';
 ///   2. « Renvoyer l'e-mail » → envoie un nouveau lien (cooldown 60s)
 ///   3. « Se déconnecter » → signOut()
 class EmailVerificationScreen extends StatefulWidget {
-  const EmailVerificationScreen({super.key});
+  const EmailVerificationScreen({
+    super.key,
+    this.noticeMessage,
+  });
+
+  final String? noticeMessage;
 
   @override
   State<EmailVerificationScreen> createState() =>
@@ -264,6 +269,28 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
+                if (widget.noticeMessage != null) ...[
+                  const SizedBox(height: 18),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Text(
+                      widget.noticeMessage!,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        color: Colors.orange.shade900,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 28),
                 if (_errorMessage != null)
                   Container(

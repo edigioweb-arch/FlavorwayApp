@@ -65,10 +65,12 @@ class ProductOptionModel {
 class RestaurantDishModel {
   RestaurantDishModel({
     required this.id,
+    required this.restaurantId,
     required this.name,
     required this.description,
     required this.priceText,
     required this.price,
+    required this.currencyCode,
     this.image,
     this.isAvailable = true,
     this.isFeatured = false,
@@ -80,10 +82,12 @@ class RestaurantDishModel {
   });
 
   final String id;
+  final String restaurantId;
   String name;
   String description;
   String priceText;
   double price;
+  String currencyCode;
   String? image;
   bool isAvailable;
   bool isFeatured;
@@ -101,6 +105,7 @@ class RestaurantDishModel {
 
     return RestaurantDishModel(
       id: '${json['id']}',
+      restaurantId: '${json['restaurant_id'] ?? ''}',
       name: (json['name'] ?? '').toString(),
       description: (json['description'] ?? '').toString(),
       priceText: RestaurantModel._formatPrice(
@@ -108,6 +113,7 @@ class RestaurantDishModel {
         (json['currency_code'] ?? 'FCFA').toString(),
       ),
       price: effectivePrice,
+      currencyCode: (json['currency_code'] ?? 'FCFA').toString(),
       image: json['image_url']?.toString(),
       isAvailable: json['is_available'] != false,
       isFeatured: json['is_featured'] == true,

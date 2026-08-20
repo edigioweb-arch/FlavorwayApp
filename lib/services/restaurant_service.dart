@@ -316,10 +316,12 @@ class RestaurantService extends ChangeNotifier {
     final resolvedDish = dish ??
         RestaurantDish(
           id: DateTime.now().microsecondsSinceEpoch.toString(),
+          restaurantId: restaurantId,
           name: name ?? 'Nouveau plat',
           description: description ?? '',
           priceText: priceText ?? '${(price ?? 0).toStringAsFixed(0)} FCFA',
           price: price ?? 0,
+          currencyCode: 'XAF',
         );
 
     final categories = restaurant.menuCategories.map((category) {
@@ -351,10 +353,12 @@ class RestaurantService extends ChangeNotifier {
     final resolvedDish = dish ??
         RestaurantDish(
           id: dishId ?? DateTime.now().microsecondsSinceEpoch.toString(),
+          restaurantId: restaurantId,
           name: name ?? 'Plat',
           description: description ?? '',
           priceText: priceText ?? '${(price ?? 0).toStringAsFixed(0)} FCFA',
           price: price ?? 0,
+          currencyCode: 'XAF',
         );
 
     final categories = restaurant.menuCategories.map((category) {

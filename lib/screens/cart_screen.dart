@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+
 import '../models/cart_item.dart';
 import '../services/cart_service.dart';
 
@@ -15,11 +16,37 @@ class _CartScreenState extends State<CartScreen> {
   static const Color orangeFlavor = Color(0xFFF36A2D);
   static const Color violetFlavor = Color(0xFF4B1F5C);
 
+  String? _lastQuotedFingerprint;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _ensureQuote();
+  }
+
+  void _ensureQuote() {
+    final cart = context.read<CartService>();
+    if (cart.items.isEmpty) {
+      _lastQuotedFingerprint = null;
+      return;
+    }
+
+    if (_lastQuotedFingerprint == cart.cartFingerprint &&
+        cart.quoteStatus != CartQuoteStatus.quoteError) {
+      return;
+    }
+
+    _lastQuotedFingerprint = cart.cartFingerprint;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<CartService>().refreshQuote();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(
-          0xFFF8F9FB), // Fond légèrement gris pour faire ressortir les cartes blanches
+      backgroundColor: const Color(0xFFF8F9FB),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0.5,
@@ -50,20 +77,58 @@ class _CartScreenState extends State<CartScreen> {
 
           return Column(
             children: [
+              if (cart.quoteStatus == CartQuoteStatus.quoteError &&
+                  cart.quoteErrorMessage != null)
+                _buildQuoteError(cart),
               Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(20),
-                  itemCount: cart.items.length,
-                  itemBuilder: (context, index) {
-                    final item = cart.items[index];
-                    return _buildCartItem(item, cart);
+                child: RefreshIndicator(
+                  onRefresh: () async {
+                    await cart.refreshQuote();
+                    _lastQuotedFingerprint = cart.cartFingerprint;
                   },
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(20),
+                    itemCount: cart.items.length,
+                    itemBuilder: (context, index) {
+                      final item = cart.items[index];
+                      return _buildCartItem(item, cart);
+                    },
+                  ),
                 ),
               ),
               _buildCheckoutBar(context, cart),
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildQuoteError(CartService cart) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF2F0),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF4C7C3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, color: Colors.redAccent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              cart.quoteErrorMessage!,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: const Color(0xFF7A2430),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -136,18 +201,7 @@ class _CartScreenState extends State<CartScreen> {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(15),
-            child: Image.asset(
-              item.image,
-              height: 90,
-              width: 90,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(
-                height: 90,
-                width: 90,
-                color: orangeFlavor.withOpacity(0.1),
-                child: const Icon(Icons.restaurant_menu, color: orangeFlavor),
-              ),
-            ),
+            child: _buildImage(item.image),
           ),
           const SizedBox(width: 15),
           Expanded(
@@ -157,9 +211,11 @@ class _CartScreenState extends State<CartScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(item.name,
-                        style: GoogleFonts.poppins(
-                            fontSize: 15, fontWeight: FontWeight.bold)),
+                    Expanded(
+                      child: Text(item.name,
+                          style: GoogleFonts.poppins(
+                              fontSize: 15, fontWeight: FontWeight.bold)),
+                    ),
                     GestureDetector(
                       onTap: () => cart.removeItem(item.id),
                       child: const Icon(Icons.cancel,
@@ -168,11 +224,23 @@ class _CartScreenState extends State<CartScreen> {
                   ],
                 ),
                 const SizedBox(height: 5),
-                Text('${item.price.toStringAsFixed(0)} CFA',
+                Text(
+                  '${item.price.toStringAsFixed(0)} ${item.currencyCode}',
+                  style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: orangeFlavor),
+                ),
+                if (item.options.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    item.options.values.join(' • '),
                     style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: orangeFlavor)),
+                      fontSize: 12,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -196,6 +264,35 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
+  Widget _buildImage(String imagePath) {
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return Image.network(
+        imagePath,
+        height: 90,
+        width: 90,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => _imageFallback(),
+      );
+    }
+
+    return Image.asset(
+      imagePath,
+      height: 90,
+      width: 90,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => _imageFallback(),
+    );
+  }
+
+  Widget _imageFallback() {
+    return Container(
+      height: 90,
+      width: 90,
+      color: orangeFlavor.withOpacity(0.1),
+      child: const Icon(Icons.restaurant_menu, color: orangeFlavor),
+    );
+  }
+
   Widget _quantityButton(IconData icon, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -211,6 +308,9 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   Widget _buildCheckoutBar(BuildContext context, CartService cart) {
+    final isLoading = cart.quoteStatus == CartQuoteStatus.loadingQuote;
+    final canProceed = cart.hasValidQuote && !isLoading;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(25, 25, 25, 35),
       decoration: BoxDecoration(
@@ -226,33 +326,77 @@ class _CartScreenState extends State<CartScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _priceRow('Sous-total', '${cart.totalAmount.toStringAsFixed(0)} CFA',
-              isBold: false),
+          _priceRow(
+            'Sous-total',
+            '${cart.displaySubtotal.toStringAsFixed(0)} ${cart.displayCurrency}',
+            isBold: false,
+          ),
           const SizedBox(height: 10),
-          _priceRow('Livraison', '2 000 CFA', isBold: false),
+          _priceRow(
+            'Livraison',
+            '${cart.displayDeliveryFee.toStringAsFixed(0)} ${cart.displayCurrency}',
+            isBold: false,
+          ),
+          if (cart.displayDiscount > 0) ...[
+            const SizedBox(height: 10),
+            _priceRow(
+              'Réduction',
+              '-${cart.displayDiscount.toStringAsFixed(0)} ${cart.displayCurrency}',
+              isBold: false,
+              color: Colors.green,
+            ),
+          ],
           const Padding(
               padding: EdgeInsets.symmetric(vertical: 15), child: Divider()),
           _priceRow(
-              'TOTAL', '${(cart.totalAmount + 2000).toStringAsFixed(0)} CFA',
-              isBold: true, color: orangeFlavor),
-          const SizedBox(height: 25),
+            'TOTAL',
+            '${cart.displayTotal.toStringAsFixed(0)} ${cart.displayCurrency}',
+            isBold: true,
+            color: orangeFlavor,
+          ),
+          const SizedBox(height: 10),
+          if (!cart.hasValidQuote)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                isLoading
+                    ? 'Vérification du montant en cours...'
+                    : 'Impossible de vérifier le montant de votre commande. Réessayez.',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: isLoading ? violetFlavor : Colors.redAccent,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          const SizedBox(height: 15),
           SizedBox(
             width: double.infinity,
             height: 60,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    violetFlavor, // Le violet pour l'action finale = très pro
+                backgroundColor: violetFlavor,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(90)),
                 elevation: 0,
               ),
-              onPressed: () => Navigator.pushNamed(context, '/checkout'),
-              child: Text('Confirmer la commande',
-                  style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white)),
+              onPressed: canProceed
+                  ? () => Navigator.pushNamed(context, '/checkout')
+                  : null,
+              child: isLoading
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text('Confirmer la commande',
+                      style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white)),
             ),
           ),
         ],

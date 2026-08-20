@@ -31,6 +31,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   static const Color violetFlavor = Color(0xFF4B1F5C);
 
   int quantity = 1;
+  final Map<String, String> _selectedOptionValues = {};
 
   String get _name => widget.dish?.name ?? widget.productName;
   String get _description =>
@@ -43,7 +44,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final total = _price * quantity;
+    final total = (_price + _selectedOptionsTotal) * quantity;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -125,42 +126,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    ...widget.dish!.options.map(
-                      (option) => Container(
-                        width: double.infinity,
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF7F4FB),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              option.name,
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: violetFlavor,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              option.values.isEmpty
-                                  ? 'Aucune valeur publiée.'
-                                  : option.values
-                                      .map((value) => value.name)
-                                      .join(' • '),
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: Colors.grey.shade700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                    ...widget.dish!.options.map(_buildOptionCard),
                   ],
                   const SizedBox(height: 16),
                   Text(
@@ -217,15 +183,33 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             height: 54,
             child: ElevatedButton(
               onPressed: () {
+                if (!_canAddToCart) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Veuillez sélectionner toutes les options obligatoires.',
+                      ),
+                    ),
+                  );
+                  return;
+                }
+
                 context.read<CartService>().addItem(
                       CartItem(
-                        id: widget.dish?.id ?? _name,
+                        id:
+                            '${widget.dish?.id ?? _name}-${_selectedOptionIds.join("-")}',
+                        productId: int.tryParse(widget.dish?.id ?? '') ?? 0,
+                        restaurantId:
+                            int.tryParse(widget.dish?.restaurantId ?? '') ?? 0,
                         name: _name,
                         image: _image ?? '',
                         restaurantName:
                             widget.dish?.menuName ?? 'Restaurant FlavorWay',
                         price: _price,
+                        currencyCode: widget.dish?.currencyCode ?? 'XAF',
                         quantity: quantity,
+                        optionValueIds: _selectedOptionIds,
+                        options: _selectedOptionsMap,
                       ),
                     );
 
@@ -288,6 +272,78 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
+  Widget _buildOptionCard(ProductOptionModel option) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F4FB),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  option.name,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: violetFlavor,
+                  ),
+                ),
+              ),
+              if (option.isRequired)
+                Text(
+                  'Obligatoire',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: orangeFlavor,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (option.values.isEmpty)
+            Text(
+              'Aucune valeur publiée.',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: Colors.grey.shade700,
+              ),
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: option.values.map((value) {
+                final isSelected = _selectedOptionValues[option.id] == value.id;
+                final label = (value.priceDelta ?? 0) > 0
+                    ? '${value.name} (+${(value.priceDelta ?? 0).toStringAsFixed(0)} FCFA)'
+                    : value.name;
+
+                return ChoiceChip(
+                  label: Text(label),
+                  selected: isSelected,
+                  onSelected: value.isAvailable
+                      ? (_) {
+                          setState(() {
+                            _selectedOptionValues[option.id] = value.id;
+                          });
+                        }
+                      : null,
+                );
+              }).toList(growable: false),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _quantityButton(IconData icon, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
@@ -308,5 +364,51 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final normalized = raw.replaceAll('CFA', '').replaceAll('FCFA', '').trim();
     return double.tryParse(normalized.replaceAll(' ', '').replaceAll(',', '.')) ??
         0;
+  }
+
+  bool get _canAddToCart {
+    if (!_hasOptions) return true;
+
+    return widget.dish!.options.every(
+      (option) => !option.isRequired || _selectedOptionValues.containsKey(option.id),
+    );
+  }
+
+  double get _selectedOptionsTotal {
+    if (!_hasOptions) return 0;
+
+    double total = 0;
+    for (final option in widget.dish!.options) {
+      final selectedId = _selectedOptionValues[option.id];
+      if (selectedId == null) continue;
+      final value = option.values.cast<ProductOptionValueModel?>().firstWhere(
+            (candidate) => candidate?.id == selectedId,
+            orElse: () => null,
+          );
+      total += value?.priceDelta ?? 0;
+    }
+    return total;
+  }
+
+  List<int> get _selectedOptionIds => _selectedOptionValues.values
+      .map((id) => int.tryParse(id) ?? 0)
+      .where((id) => id > 0)
+      .toList(growable: false);
+
+  Map<String, dynamic> get _selectedOptionsMap {
+    final result = <String, dynamic>{};
+    if (!_hasOptions) return result;
+
+    for (final option in widget.dish!.options) {
+      final selectedId = _selectedOptionValues[option.id];
+      if (selectedId == null) continue;
+      final value = option.values.cast<ProductOptionValueModel?>().firstWhere(
+            (candidate) => candidate?.id == selectedId,
+            orElse: () => null,
+          );
+      result[option.name] = value?.name;
+    }
+
+    return result;
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'laravel_sync_service.dart';
+import 'notification_service.dart';
 
 /// Service d'authentification utilisant Firebase Authentication et Firestore.
 class UserAuthService extends ChangeNotifier {
@@ -19,6 +20,13 @@ class UserAuthService extends ChangeNotifier {
 
   Stream<User?> authStateChanges() => _auth.authStateChanges();
   Stream<User?> userChanges() => _auth.userChanges();
+
+  void _debugLog(String message) {
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print(message);
+    }
+  }
 
   Future<UserCredential> signIn({
     required String email,
@@ -65,18 +73,12 @@ class UserAuthService extends ChangeNotifier {
       });
       final normalizedRole =
           (profileData['role'] as String?)?.trim().toLowerCase();
+      if (normalizedRole == 'client' || normalizedRole == 'customer') {
+        await LaravelSyncService.instance.syncCurrentClient();
+      }
       if (normalizedRole == 'restaurant' ||
           normalizedRole == 'restaurant_owner') {
-        try {
-          await LaravelSyncService.instance.syncCurrentRestaurantOwner();
-        } on LaravelSyncException catch (e) {
-          if (kDebugMode) {
-            // ignore: avoid_print
-            print('=== SIGNUP RESTAURANT SYNC WARNING ===');
-            // ignore: avoid_print
-            print('Cause sync Laravel après inscription: ${e.message}');
-          }
-        }
+        await LaravelSyncService.instance.syncCurrentRestaurantOwner();
       }
       if (profileData['firstName'] != null || profileData['lastName'] != null) {
         final displayName = [
@@ -89,28 +91,50 @@ class UserAuthService extends ChangeNotifier {
       }
       try {
         await createdUser.sendEmailVerification();
-      } catch (_) {} // L'échec de l'envoi d'e-mail ne doit pas bloquer l'inscription
+      } catch (error) {
+        _debugLog(
+          'Envoi email de vérification ignoré après inscription: $error',
+        );
+      } // L'échec de l'envoi d'e-mail ne doit pas bloquer l'inscription
     } on FirebaseAuthException catch (e) {
       if (createdUser != null) {
         try {
           await createdUser.delete(); // Rollback de la création Firebase Auth
-        } catch (_) {}
+        } catch (error) {
+          _debugLog('Rollback Firebase Auth après erreur signup: $error');
+        }
       }
       throw _convertAuthException(e);
     } on FirebaseException catch (e) {
       if (createdUser != null) {
         try {
           await createdUser.delete();
-        } catch (_) {}
+        } catch (error) {
+          _debugLog('Rollback profil Firebase après erreur Firestore: $error');
+        }
       }
       throw UserAuthException(
         message: e.message ?? 'Impossible de créer le profil utilisateur.',
+      );
+    } on LaravelSyncException catch (e) {
+      if (createdUser != null) {
+        try {
+          await _auth.signOut();
+        } catch (error) {
+          _debugLog('SignOut après échec sync Laravel signup: $error');
+        }
+      }
+      throw UserAuthException(
+        message:
+            'Compte Firebase créé, mais la synchronisation FlavorWay a échoué: ${e.message}',
       );
     } catch (e) {
       if (createdUser != null) {
         try {
           await createdUser.delete();
-        } catch (_) {}
+        } catch (error) {
+          _debugLog('Rollback Firebase inattendu après signup: $error');
+        }
       }
       throw UserAuthException(
         message: 'Une erreur inattendue est survenue lors de l\'inscription.',
@@ -119,6 +143,7 @@ class UserAuthService extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    await NotificationService.instance.deactivateCurrentDeviceToken();
     await _auth.signOut();
   }
 
@@ -269,7 +294,7 @@ class UserAuthService extends ChangeNotifier {
       // ignore: avoid_print
       print('Email reçu: "$email"');
       // ignore: avoid_print
-      print('Password length: ${password.length}');
+      print('Password renseigné: ${password.isNotEmpty}');
     }
 
     try {
@@ -337,6 +362,7 @@ class UserAuthService extends ChangeNotifier {
       final data = docSnapshot.data() ?? {};
       final String? status = data['status'] as String?;
       final String? role = data['role'] as String?;
+      final normalizedRole = role?.trim().toLowerCase();
 
       if (kDebugMode) {
         // ignore: avoid_print
@@ -349,7 +375,6 @@ class UserAuthService extends ChangeNotifier {
       }
 
       if (status != null && status != 'active') {
-        final normalizedRole = role?.trim().toLowerCase();
         final isRestaurantRole = normalizedRole == 'restaurant' ||
             normalizedRole == 'restaurant_owner';
 
@@ -430,6 +455,18 @@ class UserAuthService extends ChangeNotifier {
             message: '$statusMessage Contactez l\'assistance.');
       }
 
+      if (normalizedRole == 'client' || normalizedRole == 'customer') {
+        try {
+          await LaravelSyncService.instance.syncCurrentClient();
+        } on LaravelSyncException catch (e) {
+          await _auth.signOut();
+          throw UserAuthException(
+            message:
+                'Connexion Firebase réussie, mais la synchronisation FlavorWay a échoué: ${e.message}',
+          );
+        }
+      }
+
       if (kDebugMode) {
         // ignore: avoid_print
         print('--- signInWithProfileCheck FIN NORME ---');
@@ -468,7 +505,8 @@ class UserAuthService extends ChangeNotifier {
       if (data == null) return false;
       final String? status = data['status'] as String?;
       return status == null || status == 'active';
-    } catch (_) {
+    } catch (error) {
+      _debugLog('Lecture statut pending restaurant impossible: $error');
       return false;
     }
   }

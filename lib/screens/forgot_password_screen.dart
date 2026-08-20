@@ -51,11 +51,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message)),
       );
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Impossible d\'envoyer le lien de réinitialisation.'),
+        SnackBar(
+          content: Text(
+            error.toString().isEmpty
+                ? 'Impossible d\'envoyer le lien de réinitialisation.'
+                : error.toString(),
+          ),
         ),
       );
     } finally {

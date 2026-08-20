@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+
 import 'addresses_screen.dart';
 import 'payment_methods_screen.dart';
 import '../services/cart_service.dart';
 import '../services/order_service.dart';
+import '../services/payment_service.dart';
 import '../services/notification_service.dart';
 import '../services/payment_method_service.dart';
 
@@ -19,19 +21,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   static const Color orangeFlavor = Color(0xFFF36A2D);
   static const Color violetFlavor = Color(0xFF4B1F5C);
 
-  String selectedPaymentMethod = 'Orange Money';
-  String selectedAddress = 'Maison';
-
-  final List<Map<String, String>> addresses = [
-    {'name': 'Maison', 'full': 'Akwa, Douala - 20 min'},
-    {'name': 'Bureau', 'full': 'Bonanjo, Douala - 15 min'},
-    {'name': 'Chez maman', 'full': 'New Bell, Douala - 30 min'},
-  ];
+  String selectedPaymentMethod = 'Paiement à la livraison';
+  Map<String, dynamic>? _selectedAddress;
+  final TextEditingController _noteController = TextEditingController();
+  bool _submitting = false;
+  String? _lastQuotedFingerprint;
+  String? _pendingIdempotencyKey;
 
   @override
   void initState() {
     super.initState();
     selectedPaymentMethod = PaymentMethodService.instance.selectedMethod.name;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _ensureQuote();
+  }
+
+  @override
+  void dispose() {
+    _noteController.dispose();
+    super.dispose();
   }
 
   Future<void> _openAddressBook() async {
@@ -44,22 +56,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     if (result is! Map) return;
 
-    final name = (result['name'] as String?)?.trim();
     final full = (result['full'] as String?)?.trim();
-    if (name == null || full == null || name.isEmpty || full.isEmpty) return;
+    if (full == null || full.isEmpty) return;
 
-    final existingIndex = addresses.indexWhere((address) => address['name'] == name);
     setState(() {
-      if (existingIndex == -1) {
-        addresses.add({
-          'name': name,
-          'full': full,
-        });
-      } else {
-        addresses[existingIndex]['full'] = full;
-      }
-      selectedAddress = name;
+      _selectedAddress = Map<String, dynamic>.from(result);
     });
+
+    await _refreshQuote();
   }
 
   Future<void> _openPaymentMethods() async {
@@ -74,12 +78,49 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       setState(() {
         selectedPaymentMethod = result.trim();
       });
+    } else {
+      setState(() {
+        selectedPaymentMethod = PaymentMethodService.instance.selectedMethod.name;
+      });
+    }
+
+    await _refreshQuote();
+  }
+
+  void _ensureQuote() {
+    final cart = context.read<CartService>();
+    if (cart.items.isEmpty) {
+      _lastQuotedFingerprint = null;
       return;
     }
 
-    setState(() {
-      selectedPaymentMethod = PaymentMethodService.instance.selectedMethod.name;
+    if (_lastQuotedFingerprint == cart.cartFingerprint &&
+        cart.quoteStatus != CartQuoteStatus.quoteError) {
+      return;
+    }
+
+    _lastQuotedFingerprint = cart.cartFingerprint;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await _refreshQuote();
     });
+  }
+
+  Future<void> _refreshQuote() async {
+    final cart = context.read<CartService>();
+    final address = _selectedAddress;
+
+    await cart.refreshQuote(
+      deliveryCityId: address?['city_id']?.toString(),
+      deliveryZoneAreaId: address?['delivery_zone_area_id']?.toString(),
+      deliveryZoneAreaName: address?['delivery_zone_area_name']?.toString(),
+      deliveryAddressLine: address?['full']?.toString(),
+      deliveryLatitude: address?['latitude'] as double?,
+      deliveryLongitude: address?['longitude'] as double?,
+      paymentMethod: selectedPaymentMethod,
+    );
+
+    _lastQuotedFingerprint = cart.cartFingerprint;
   }
 
   @override
@@ -109,7 +150,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         builder: (context, cart, child) {
           return Column(
             children: [
-              // Récapitulatif commande
+              if (cart.quoteErrorMessage != null)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF2F0),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFF4C7C3)),
+                  ),
+                  child: Text(
+                    cart.quoteErrorMessage!,
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: const Color(0xFF7A2430),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
               Container(
                 margin: const EdgeInsets.all(20),
                 padding: const EdgeInsets.all(20),
@@ -126,83 +185,50 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
                 child: Column(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Articles (${cart.items.length})',
-                          style: GoogleFonts.poppins(fontSize: 16),
-                        ),
-                        Text(
-                          '${cart.items.fold<double>(0.0, (sum, item) => sum + item.totalPrice).toStringAsFixed(0)} CFA',
-                          style: GoogleFonts.poppins(
-                              fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                      ],
+                    _summaryRow(
+                      'Articles (${cart.items.length})',
+                      '${cart.displaySubtotal.toStringAsFixed(0)} ${cart.displayCurrency}',
                     ),
                     const Divider(),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Livraison'),
-                        Text(
-                          '2 000 CFA',
-                          style:
-                              GoogleFonts.poppins(fontWeight: FontWeight.bold),
-                        ),
-                      ],
+                    _summaryRow(
+                      'Livraison',
+                      '${cart.displayDeliveryFee.toStringAsFixed(0)} ${cart.displayCurrency}',
                     ),
+                    if (cart.displayDiscount > 0) ...[
+                      const Divider(),
+                      _summaryRow(
+                        'Réduction',
+                        '-${cart.displayDiscount.toStringAsFixed(0)} ${cart.displayCurrency}',
+                      ),
+                    ],
                     const Divider(),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'TOTAL',
-                          style: GoogleFonts.poppins(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: violetFlavor,
-                          ),
-                        ),
-                        Text(
-                          '${cart.totalAmount.toStringAsFixed(0)} CFA',
-                          style: GoogleFonts.poppins(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: orangeFlavor,
-                          ),
-                        ),
-                      ],
+                    _summaryRow(
+                      'TOTAL',
+                      '${cart.displayTotal.toStringAsFixed(0)} ${cart.displayCurrency}',
+                      isTotal: true,
                     ),
+                    if (cart.quoteStatus == CartQuoteStatus.loadingQuote) ...[
+                      const SizedBox(height: 12),
+                      const LinearProgressIndicator(minHeight: 4),
+                    ],
                   ],
                 ),
               ),
-
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Articles commandés
                       _buildSectionTitle('Articles commandés'),
                       _buildCartItems(cart),
-
                       const SizedBox(height: 12),
-
-                      // Adresse livraison
                       _buildSectionTitle('Adresse de livraison'),
                       _buildAddressSelector(),
-
                       const SizedBox(height: 24),
-
-                      // Mode de paiement
                       _buildSectionTitle('Mode de paiement'),
                       _buildPaymentSelector(),
-
                       const SizedBox(height: 24),
-
-                      // Note pour le restaurant
                       _buildSectionTitle('Note pour le restaurant'),
                       Container(
                         padding: const EdgeInsets.all(16),
@@ -212,6 +238,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           border: Border.all(color: Colors.grey.shade200),
                         ),
                         child: TextField(
+                          controller: _noteController,
                           maxLines: 3,
                           decoration: InputDecoration(
                             hintText: 'Ex: Sans oignon s\'il vous plaît',
@@ -224,8 +251,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                 ),
               ),
-
-              // Bouton commande
               _buildOrderButton(context, cart),
             ],
           );
@@ -264,14 +289,34 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ),
       child: Column(
         children: [
-          ...addresses.map((addr) => RadioListTile<String>(
-                title: Text(addr['name']!,
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(addr['full']!),
-                value: addr['name']!,
-                groupValue: selectedAddress,
-                onChanged: (value) => setState(() => selectedAddress = value!),
-              )),
+          if (_selectedAddress == null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                'Sélectionnez une adresse avec ville et quartier pour calculer correctement la livraison.',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: Colors.grey.shade700,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            )
+          else
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.location_on_outlined),
+              title: Text(
+                (_selectedAddress?['name'] ?? _selectedAddress?['label'] ?? 'Adresse').toString(),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(
+                [
+                  (_selectedAddress?['full'] ?? '').toString(),
+                  (_selectedAddress?['city_name'] ?? '').toString(),
+                  (_selectedAddress?['delivery_zone_area_name'] ?? '').toString(),
+                ].where((value) => value.trim().isNotEmpty).join(' • '),
+              ),
+            ),
           const Divider(height: 1),
           TextButton.icon(
             onPressed: _openAddressBook,
@@ -302,88 +347,55 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               label: const Text('Gérer'),
             ),
           ),
-          RadioListTile<String>(
-            title: Row(
-              children: [
-                Image.asset('assets/images/om.png',
-                    height: 24,
-                    errorBuilder: (_, __, ___) =>
-                        Icon(Icons.phone_android, color: orangeFlavor)),
-                const SizedBox(width: 12),
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Orange Money',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    Text('Paiement instantané',
-                        style: TextStyle(color: Colors.grey)),
-                  ],
-                ),
-              ],
+          ...[
+            ('Airtel Money', null, Colors.redAccent, 'Paiement instantané'),
+            ('MTN MoMo', 'assets/images/mtnmomo.png', Colors.green, 'Paiement instantané'),
+            ('Carte bancaire', null, Colors.blue, 'Visa, Mastercard'),
+            ('Paiement à la livraison', null, Colors.green, null),
+          ].map(
+            (entry) => RadioListTile<String>(
+              title: Row(
+                children: [
+                  if (entry.$2 != null)
+                    Image.asset(
+                      entry.$2!,
+                      height: 24,
+                      errorBuilder: (_, __, ___) => Icon(
+                        Icons.payment,
+                        color: entry.$3,
+                      ),
+                    )
+                  else
+                    Icon(
+                      entry.$1 == 'Carte bancaire'
+                          ? Icons.credit_card
+                          : Icons.money,
+                      color: entry.$3,
+                    ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        entry.$1,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      if (entry.$4 != null)
+                        Text(
+                          entry.$4!,
+                          style: const TextStyle(color: Colors.grey),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+              value: entry.$1,
+              groupValue: selectedPaymentMethod,
+              onChanged: (value) async {
+                setState(() => selectedPaymentMethod = value!);
+                await _refreshQuote();
+              },
             ),
-            value: 'Orange Money',
-            groupValue: selectedPaymentMethod,
-            onChanged: (value) =>
-                setState(() => selectedPaymentMethod = value!),
-          ),
-          RadioListTile<String>(
-            title: Row(
-              children: [
-                Image.asset('assets/images/mtnmomo.png',
-                    height: 24,
-                    errorBuilder: (_, __, ___) =>
-                        Icon(Icons.phone_android, color: Colors.green)),
-                const SizedBox(width: 12),
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('MTN MoMo',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    Text('Paiement instantané',
-                        style: TextStyle(color: Colors.grey)),
-                  ],
-                ),
-              ],
-            ),
-            value: 'MTN MoMo',
-            groupValue: selectedPaymentMethod,
-            onChanged: (value) =>
-                setState(() => selectedPaymentMethod = value!),
-          ),
-          RadioListTile<String>(
-            title: Row(
-              children: [
-                const Icon(Icons.credit_card, color: Colors.blue),
-                const SizedBox(width: 12),
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Carte bancaire',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    Text('Visa, Mastercard',
-                        style: TextStyle(color: Colors.grey)),
-                  ],
-                ),
-              ],
-            ),
-            value: 'Carte bancaire',
-            groupValue: selectedPaymentMethod,
-            onChanged: (value) =>
-                setState(() => selectedPaymentMethod = value!),
-          ),
-          RadioListTile<String>(
-            title: Row(
-              children: [
-                const Icon(Icons.money, color: Colors.green),
-                const SizedBox(width: 12),
-                const Text('Paiement à la livraison',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-              ],
-            ),
-            value: 'Paiement à la livraison',
-            groupValue: selectedPaymentMethod,
-            onChanged: (value) =>
-                setState(() => selectedPaymentMethod = value!),
           ),
         ],
       ),
@@ -391,6 +403,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Widget _buildOrderButton(BuildContext context, CartService cart) {
+    final canSubmit = cart.hasValidQuote &&
+        cart.quoteStatus != CartQuoteStatus.loadingQuote &&
+        !_submitting;
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.all(20),
@@ -404,57 +420,142 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
           elevation: 0,
         ),
-        onPressed: () async {
-          final restaurantName = cart.items.isNotEmpty
-              ? cart.items.first.restaurantName
-              : 'Restaurant';
+        onPressed: !canSubmit
+            ? null
+            : () async {
+                setState(() => _submitting = true);
+                dynamic createdOrder;
+                try {
+                  final quote = cart.quote!;
+                  final address = _selectedAddress;
+                  if (address == null) {
+                    throw Exception('Adresse de livraison introuvable.');
+                  }
 
-          try {
-            final orderId = await OrderService.instance.createOrder(
-              restaurantName: restaurantName,
-              restaurantId: 'joli_coin',
-              items: cart.items
-                  .map((item) => {
-                        'id': item.id,
-                        'name': item.name,
-                        'image': item.image,
-                        'price': item.price,
-                        'quantity': item.quantity,
-                        'options': item.options,
-                      })
-                  .toList(),
-              total: cart.totalAmount,
-              deliveryAddress: selectedAddress,
-              paymentMethod: selectedPaymentMethod,
-            );
+                  _pendingIdempotencyKey ??=
+                      OrderService.instance.generateIdempotencyKey();
 
-            NotificationService.instance.addNotification(
-              title: 'Commande créée',
-              message: 'Votre commande $orderId est en préparation.',
-            );
+                  final order = await OrderService.instance.createOrder(
+                    restaurantId: cart.restaurantId ?? quote.restaurantId,
+                    items: cart.items,
+                    deliveryAddress: <String, dynamic>{
+                      'label': (address['name'] ?? address['label'] ?? 'Adresse').toString(),
+                      'address_line': (address['full'] ?? '').toString(),
+                      'city': (address['city_name'] ?? '').toString(),
+                      'city_id': int.tryParse((address['city_id'] ?? '').toString()),
+                      'delivery_zone_area_id': int.tryParse((address['delivery_zone_area_id'] ?? '').toString()),
+                      'delivery_zone_area_name': (address['delivery_zone_area_name'] ?? '').toString(),
+                      'latitude': address['latitude'],
+                      'longitude': address['longitude'],
+                    },
+                    paymentMethod: selectedPaymentMethod,
+                    idempotencyKey: _pendingIdempotencyKey!,
+                    note: _noteController.text.trim(),
+                  );
 
-            cart.clear();
-            if (!context.mounted) return;
-            Navigator.pushReplacementNamed(
-              context,
-              '/order-success',
-              arguments: orderId,
-            );
-          } catch (e) {
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Erreur : ${e.toString()}')),
-            );
-          }
-        },
-        child: Text(
-          'Passer la commande • ${cart.totalAmount.toStringAsFixed(0)} CFA',
+                  NotificationService.instance.addNotification(
+                    title: 'Commande créée',
+                    message:
+                        'Votre commande ${order.orderNumber} est enregistrée.',
+                  );
+                  createdOrder = order;
+
+                  if (selectedPaymentMethod != 'Paiement à la livraison') {
+                    await PaymentService.instance.initiatePayment(
+                      orderNumber: order.orderNumber,
+                      paymentMethod: selectedPaymentMethod,
+                      phone: null,
+                      idempotencyKey: _pendingIdempotencyKey,
+                    );
+                  } else {
+                    await PaymentService.instance.initiatePayment(
+                      orderNumber: order.orderNumber,
+                      paymentMethod: 'cash',
+                      idempotencyKey: _pendingIdempotencyKey,
+                    );
+                  }
+
+                  cart.clear();
+                  _pendingIdempotencyKey = null;
+                  if (!context.mounted) return;
+                  Navigator.pushReplacementNamed(
+                    context,
+                    '/order-success',
+                    arguments: order.orderNumber,
+                  );
+                } catch (e) {
+                  if (createdOrder != null) {
+                    cart.clear();
+                    _pendingIdempotencyKey = null;
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Commande créée, mais le paiement n’a pas pu être initié. Réessayez depuis le suivi.',
+                        ),
+                      ),
+                    );
+                    Navigator.pushReplacementNamed(
+                      context,
+                      '/order-tracking',
+                      arguments: createdOrder.orderNumber,
+                    );
+                    return;
+                  }
+                  final message = e.toString().replaceFirst('Exception: ', '');
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Erreur : $message')),
+                  );
+                } finally {
+                  if (mounted) {
+                    setState(() => _submitting = false);
+                  }
+                }
+              },
+        child: _submitting
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : Text(
+                cart.hasValidQuote
+                    ? 'Passer la commande • ${cart.displayTotal.toStringAsFixed(0)} ${cart.displayCurrency}'
+                    : 'Montant à vérifier',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget _summaryRow(String label, String value, {bool isTotal = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
           style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
+            fontSize: isTotal ? 18 : 16,
+            fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
+            color: isTotal ? violetFlavor : Colors.black87,
           ),
         ),
-      ),
+        Text(
+          value,
+          style: GoogleFonts.poppins(
+            fontSize: isTotal ? 20 : 16,
+            fontWeight: FontWeight.bold,
+            color: isTotal ? orangeFlavor : Colors.black87,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -505,72 +606,23 @@ Widget _buildCartItems(CartService cart) {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '${item.totalPrice.toStringAsFixed(0)} CFA',
+                '${item.totalPrice.toStringAsFixed(0)} ${item.currencyCode}',
                 style: GoogleFonts.poppins(
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 6),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  GestureDetector(
-                    onTap: () {
-                      cart.removeItem(item.id);
-                    },
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(Icons.remove, size: 16),
-                    ),
+              if (item.options.isNotEmpty)
+                Text(
+                  item.options.values.join(' • '),
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: Colors.grey.shade600,
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${item.quantity}',
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () {
-                      cart.addItem(item);
-                    },
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: orangeFlavor.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(
-                        Icons.add,
-                        size: 16,
-                        color: orangeFlavor,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  GestureDetector(
-                    onTap: () {
-                      cart.removeItem(item.id);
-                    },
-                    child: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.red,
-                      size: 20,
-                    ),
-                  ),
-                ],
-              ),
+                ),
             ],
           ),
         );
-      }).toList(),
+      }).toList(growable: false),
     ),
   );
 }

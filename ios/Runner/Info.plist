@@ -70,6 +70,10 @@
 	<string>FlavorWay utilise la caméra pour prendre des photos de profil et envoyer des images.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>FlavorWay utilise votre galerie pour choisir des images de profil et les partager.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>FlavorWay utilise votre position pour remplir automatiquement votre adresse de livraison.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

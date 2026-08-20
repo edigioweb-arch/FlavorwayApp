@@ -69,6 +69,21 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       final user = UserAuthService.instance.currentUser;
+      if (user != null && !user.emailVerified) {
+        if (!mounted) return;
+
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => const EmailVerificationScreen(
+              noticeMessage:
+                  'Veuillez vérifier votre adresse e-mail avant de vous connecter.',
+            ),
+          ),
+          (route) => false,
+        );
+        return;
+      }
+
       if (user != null) {
         final profile =
             await UserAuthService.instance.getUserProfile(uid: user.uid);
@@ -105,6 +120,9 @@ class _LoginScreenState extends State<LoginScreen> {
       // Retour vers la route racine (/) qui contient AuthGate.
       // AuthGate lira l'utilisateur Firebase connecté et affichera
       // le bon widget (HomeScreen ou EmailVerificationScreen).
+      if (!mounted) {
+        return;
+      }
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) => const AuthGate(

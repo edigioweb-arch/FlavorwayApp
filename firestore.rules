@@ -1,0 +1,263 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function userCreateAllowedKeys() {
+      return [
+        'uid',
+        'email',
+        'firstName',
+        'lastName',
+        'fullName',
+        'phone',
+        'role',
+        'country',
+        'city',
+        'address',
+        'status',
+        'username',
+        'restaurantName',
+        'cuisineType',
+        'licenseNumber',
+        'deliveryMode',
+        'restaurantDeliveryFee',
+        'createdAt',
+        'updatedAt',
+      ];
+    }
+
+    function userUpdateAllowedKeys() {
+      return [
+        'fullName',
+        'firstName',
+        'lastName',
+        'prenom',
+        'nom',
+        'email',
+        'phone',
+        'telephone',
+        'photo',
+        'photoUrl',
+        'updatedAt',
+      ];
+    }
+
+    function userCreateRoleIsAllowed(data) {
+      return (
+        (
+          data.role == 'client' ||
+          data.role == 'customer'
+        ) && data.status == 'active'
+      ) || (
+        (
+          data.role == 'restaurant' ||
+          data.role == 'restaurant_owner'
+        ) && data.status == 'pending'
+      );
+    }
+
+    function userCreateDataIsValid(uid) {
+      let data = request.resource.data;
+
+      return data.keys().hasOnly(userCreateAllowedKeys())
+        && data.uid == uid
+        && data.email is string
+        && data.firstName is string
+        && data.lastName is string
+        && data.fullName is string
+        && data.phone is string
+        && data.country is string
+        && data.city is string
+        && data.address is string
+        && data.role is string
+        && data.status is string
+        && (!('username' in data) || data.username is string)
+        && (!('restaurantName' in data) || data.restaurantName is string)
+        && (!('cuisineType' in data) || data.cuisineType is string)
+        && (!('licenseNumber' in data) || data.licenseNumber is string)
+        && (!('deliveryMode' in data) || data.deliveryMode in ['restaurant', 'flavorway'])
+        && (!('restaurantDeliveryFee' in data) || data.restaurantDeliveryFee is number)
+        && userCreateRoleIsAllowed(data);
+    }
+
+    function userUpdateDataIsValid(uid) {
+      let updated = request.resource.data;
+      let existing = resource.data;
+
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(userUpdateAllowedKeys())
+        && updated.uid == existing.uid
+        && updated.uid == uid
+        && updated.email == existing.email
+        && updated.role == existing.role
+        && updated.status == existing.status
+        && (!('panel_role' in updated) || updated.panel_role == existing.panel_role)
+        && (!('is_admin' in updated) || updated.is_admin == existing.is_admin)
+        && (!('firebase_uid' in updated) || updated.firebase_uid == existing.firebase_uid)
+        && (!('subscription' in updated) || updated.subscription == existing.subscription)
+        && (!('premium' in updated) || updated.premium == existing.premium)
+        && (!('permissions' in updated) || updated.permissions == existing.permissions)
+        && (!('restaurant_status' in updated) || updated.restaurant_status == existing.restaurant_status)
+        && (!('firstName' in updated) || updated.firstName is string)
+        && (!('lastName' in updated) || updated.lastName is string)
+        && (!('fullName' in updated) || updated.fullName is string)
+        && (!('prenom' in updated) || updated.prenom is string)
+        && (!('nom' in updated) || updated.nom is string)
+        && (!('phone' in updated) || updated.phone is string)
+        && (!('telephone' in updated) || updated.telephone is string)
+        && (!('photo' in updated) || updated.photo is string)
+        && (!('photoUrl' in updated) || updated.photoUrl is string);
+    }
+
+    function addressAllowedKeys() {
+      return [
+        'label',
+        'address',
+        'city_id',
+        'city_name',
+        'delivery_zone_area_id',
+        'delivery_zone_area_name',
+        'default',
+        'type',
+        'latitude',
+        'longitude',
+        'createdAt',
+      ];
+    }
+
+    function addressDataIsValid() {
+      let data = request.resource.data;
+
+      return data.keys().hasOnly(addressAllowedKeys())
+        && data.label is string
+        && data.address is string
+        && (!('city_id' in data) || data.city_id == null || data.city_id is int)
+        && (!('city_name' in data) || data.city_name is string)
+        && (!('delivery_zone_area_id' in data) || data.delivery_zone_area_id == null || data.delivery_zone_area_id is int)
+        && (!('delivery_zone_area_name' in data) || data.delivery_zone_area_name is string)
+        && data.default is bool
+        && data.type is string
+        && (!('latitude' in data) || data.latitude == null || data.latitude is number)
+        && (!('longitude' in data) || data.longitude == null || data.longitude is number);
+    }
+
+    function paymentMethodAllowedKeys() {
+      return [
+        'name',
+        'subtitle',
+        'type',
+        'isSelected',
+        'createdAt',
+      ];
+    }
+
+    function paymentMethodDataIsValid() {
+      let data = request.resource.data;
+
+      return data.keys().hasOnly(paymentMethodAllowedKeys())
+        && data.name is string
+        && data.subtitle is string
+        && data.type is string
+        && data.isSelected is bool
+        && !('pan' in data)
+        && !('cardNumber' in data)
+        && !('cvv' in data)
+        && !('pin' in data)
+        && !('token' in data)
+        && !('secret' in data)
+        && !('apiKey' in data);
+    }
+
+    function conversationAllowedKeys() {
+      return [
+        'title',
+        'avatar',
+        'type',
+        'lastMessage',
+        'lastMessageTime',
+        'unreadCount',
+      ];
+    }
+
+    function conversationDataIsValid() {
+      let data = request.resource.data;
+
+      return data.keys().hasOnly(conversationAllowedKeys())
+        && data.title is string
+        && data.avatar is string
+        && data.type is string
+        && data.lastMessage is string
+        && data.unreadCount is int;
+    }
+
+    function messageAllowedKeys() {
+      return [
+        'senderId',
+        'senderName',
+        'content',
+        'timestamp',
+        'isMe',
+        'isRead',
+        'imageUrl',
+        'latitude',
+        'longitude',
+      ];
+    }
+
+    function messageDataIsValid(uid) {
+      let data = request.resource.data;
+
+      return data.keys().hasOnly(messageAllowedKeys())
+        && data.senderId == uid
+        && data.senderName is string
+        && data.content is string
+        && data.isMe == true
+        && data.isRead is bool
+        && (!('imageUrl' in data) || data.imageUrl == null || data.imageUrl is string)
+        && (!('latitude' in data) || data.latitude == null || data.latitude is number)
+        && (!('longitude' in data) || data.longitude == null || data.longitude is number);
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid) && userCreateDataIsValid(uid);
+      allow update: if isOwner(uid) && userUpdateDataIsValid(uid);
+      allow delete: if false;
+
+      match /addresses/{addressId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && addressDataIsValid();
+        allow delete: if isOwner(uid);
+      }
+
+      match /payment_methods/{paymentMethodId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && paymentMethodDataIsValid();
+        allow delete: if isOwner(uid);
+      }
+
+      match /conversations/{conversationId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && conversationDataIsValid();
+        allow delete: if isOwner(uid);
+
+        match /messages/{messageId} {
+          allow read: if isOwner(uid);
+          allow create, update: if isOwner(uid) && messageDataIsValid(uid);
+          allow delete: if isOwner(uid);
+        }
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

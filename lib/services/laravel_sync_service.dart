@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'api_client.dart';
+
 class LaravelSyncException implements Exception {
   const LaravelSyncException(this.message);
 
@@ -19,14 +21,10 @@ class LaravelSyncService {
 
   static final LaravelSyncService instance = LaravelSyncService._();
 
-  static const String _apiBaseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://127.0.0.1:8002',
-  );
-
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final http.Client _client = http.Client();
+  final ApiClient _apiClient = ApiClient();
 
   static const Map<String, dynamic> _joliCoinWebMedia = <String, dynamic>{
     'cover_path': 'images/restaurants/joli_coin/cover.png',
@@ -215,7 +213,54 @@ class LaravelSyncService {
     'is_recommended': true,
   };
 
-  String get apiBaseUrl => _apiBaseUrl;
+  String get apiBaseUrl => _apiClient.baseUrl;
+
+  Future<Map<String, dynamic>> syncCurrentClient() async {
+    final user = _auth.currentUser;
+
+    if (user == null) {
+      throw const LaravelSyncException(
+        'Aucun utilisateur Firebase connecté pour la synchronisation.',
+      );
+    }
+
+    final profileSnapshot = await _firestore.collection('users').doc(user.uid).get();
+    final profile = profileSnapshot.data();
+
+    if (!profileSnapshot.exists || profile == null) {
+      throw const LaravelSyncException(
+        'Profil client introuvable dans Firestore.',
+      );
+    }
+
+    final normalizedRole = _normalizedString(profile['role'])?.toLowerCase();
+
+    if (normalizedRole != 'client' && normalizedRole != 'customer') {
+      throw const LaravelSyncException(
+        'Ce compte connecté n’est pas un compte client.',
+      );
+    }
+
+    final idToken = await user.getIdToken(true);
+
+    if (idToken == null || idToken.isEmpty) {
+      throw const LaravelSyncException(
+        'Impossible de récupérer un token Firebase valide pour ce client.',
+      );
+    }
+    final firstName = _normalizedString(profile['firstName']);
+    final lastName = _normalizedString(profile['lastName']);
+    final phone = _normalizedString(profile['phone']);
+
+    return _postSync(
+      idToken: idToken,
+      payload: buildClientSyncPayload(
+        firstName: firstName,
+        lastName: lastName,
+        phone: phone,
+      ),
+    );
+  }
 
   Future<Map<String, dynamic>> syncCurrentRestaurantOwner() async {
     final user = _auth.currentUser;
@@ -279,11 +324,17 @@ class LaravelSyncService {
 
     final idToken = await user.getIdToken(true);
 
+    if (idToken == null || idToken.isEmpty) {
+      throw const LaravelSyncException(
+        'Impossible de récupérer un token Firebase valide pour ce restaurateur.',
+      );
+    }
+
     if (kDebugMode) {
       // ignore: avoid_print
       print('ID token récupéré: OUI');
       // ignore: avoid_print
-      print('API URL: $_apiBaseUrl');
+      print('API URL: $apiBaseUrl');
       // ignore: avoid_print
       print('appel /api/v1/auth/sync démarré');
     }
@@ -299,6 +350,9 @@ class LaravelSyncService {
     final profileDescription = _normalizedString(profile['description']);
     final openingHours = _normalizedString(profile['openingHours']);
     final restaurantEmail = _normalizedString(profile['email']) ?? user.email;
+    final deliveryMode =
+        (_normalizedString(profile['deliveryMode']) ?? 'flavorway').toLowerCase();
+    final restaurantDeliveryFee = _normalizedNumber(profile['restaurantDeliveryFee']);
     final mediaPayload = _restaurantMediaPayload(restaurantName);
 
     if (restaurantName == null || restaurantName.isEmpty) {
@@ -343,6 +397,9 @@ class LaravelSyncService {
         'client_rating': _normalizedString(mediaPayload['client_rating']),
         'preparation_time':
             _normalizedString(mediaPayload['preparation_time']),
+        'delivery_mode': deliveryMode == 'restaurant' ? 'restaurant' : 'flavorway',
+        'restaurant_delivery_fee':
+            deliveryMode == 'restaurant' ? restaurantDeliveryFee : null,
         'distance_label': _normalizedString(mediaPayload['distance_label']),
         'services': mediaPayload['services'] ?? <String>[],
         'menu_categories': mediaPayload['menu_categories'] ?? <Map<String, dynamic>>[],
@@ -354,8 +411,15 @@ class LaravelSyncService {
       },
     };
 
+    return _postSync(idToken: idToken, payload: payload);
+  }
+
+  Future<Map<String, dynamic>> _postSync({
+    required String idToken,
+    required Map<String, dynamic> payload,
+  }) async {
     final response = await _client.post(
-      Uri.parse('$_apiBaseUrl/api/v1/auth/sync'),
+      Uri.parse('$apiBaseUrl/api/v1/auth/sync'),
       headers: <String, String>{
         'Authorization': 'Bearer $idToken',
         'Content-Type': 'application/json',
@@ -383,16 +447,6 @@ class LaravelSyncService {
     }
 
     if (success) {
-      if (kDebugMode) {
-        final restaurant = decoded['restaurant'] as Map<String, dynamic>?;
-        // ignore: avoid_print
-        print('restaurant Laravel id: ${restaurant?['id'] ?? 'null'}');
-        // ignore: avoid_print
-        print(
-          'restaurant Laravel status: ${restaurant?['status'] ?? 'null'}',
-        );
-      }
-
       return decoded;
     }
 
@@ -401,10 +455,15 @@ class LaravelSyncService {
         throw const LaravelSyncException(
           'Session Firebase invalide ou expirée. Reconnectez-vous.',
         );
+      case 403:
+        throw LaravelSyncException(
+          _extractServerMessage(decoded) ??
+              'Ce compte n’est pas autorisé à se synchroniser avec Laravel.',
+        );
       case 422:
         throw LaravelSyncException(
           _extractServerMessage(decoded) ??
-              'Les données restaurateur envoyées à Laravel sont invalides.',
+              'Les données envoyées à Laravel sont invalides.',
         );
       case 503:
         throw const LaravelSyncException(
@@ -427,6 +486,18 @@ class LaravelSyncService {
     return trimmed.isEmpty ? null : trimmed;
   }
 
+  static num? _normalizedNumber(dynamic value) {
+    if (value is num) {
+      return value;
+    }
+
+    if (value is String) {
+      return num.tryParse(value.trim().replaceAll(',', '.'));
+    }
+
+    return null;
+  }
+
   static String? _extractServerMessage(Map<String, dynamic> decoded) {
     final message = decoded['message'];
     if (message is String && message.trim().isNotEmpty) {
@@ -443,10 +514,24 @@ class LaravelSyncService {
 
     final normalized = restaurantName.trim().toLowerCase();
 
-    if (normalized == 'joli coin') {
+    if (kDebugMode && normalized == 'joli coin') {
       return _joliCoinWebMedia;
     }
 
     return const <String, dynamic>{};
+  }
+
+  @visibleForTesting
+  static Map<String, dynamic> buildClientSyncPayload({
+    String? firstName,
+    String? lastName,
+    String? phone,
+  }) {
+    return <String, dynamic>{
+      'role': 'customer',
+      'first_name': firstName ?? '',
+      'last_name': lastName ?? '',
+      'phone': phone ?? '',
+    };
   }
 }

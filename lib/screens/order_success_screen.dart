@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'home_screen.dart';
+import '../services/order_service.dart';
 
 class OrderSuccessScreen extends StatelessWidget {
   const OrderSuccessScreen({super.key});
@@ -22,7 +23,6 @@ class OrderSuccessScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Animation visuelle de l'icône
                   Container(
                     padding: const EdgeInsets.all(35),
                     decoration: BoxDecoration(
@@ -64,38 +64,58 @@ class OrderSuccessScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 30),
 
-                  // Informations de livraison
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 40),
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          'Préparation en cours...',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            color: violetFlavor,
-                            fontWeight: FontWeight.w600,
-                          ),
+                  FutureBuilder<OrderModel?>(
+                    future: OrderService.instance.fetchOrderDetail(orderId),
+                    builder: (context, snapshot) {
+                      final order = snapshot.data;
+
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 40),
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                        const SizedBox(height: 5),
-                        Text(
-                          'Livraison estimée : 25 - 35 min',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            color: Colors.grey.shade600,
-                          ),
+                        child: Column(
+                          children: [
+                            Text(
+                              order?.displayStatus ?? 'Commande enregistrée',
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                color: violetFlavor,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              order == null
+                                  ? 'Chargement des détails...'
+                                  : '${order.restaurantName} • ${order.total.toStringAsFixed(0)} ${order.currency}',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            if (order != null && order.deliveryAddress.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  order.deliveryAddress,
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 50),
 
-                  // Bouton Suivi
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 50),
                     child: SizedBox(

@@ -1,119 +1,232 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:io';
+
 import 'package:audioplayers/audioplayers.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 
-import 'user_auth_service.dart';
-
-class AppNotification {
-  final String id;
-  final String title;
-  final String message;
-  final DateTime createdAt;
-  final String? type;
-  final String? targetId;
-  bool isRead;
-
-  AppNotification({
-    required this.id,
-    required this.title,
-    required this.message,
-    required this.createdAt,
-    this.type,
-    this.targetId,
-    this.isRead = false,
-  });
-}
+import '../models/app_notification_model.dart';
+import '../firebase_options.dart';
+import 'api_client.dart';
+import 'notification_navigation_service.dart';
 
 class NotificationService extends ChangeNotifier {
   static final NotificationService instance = NotificationService._();
 
-  NotificationService._() {
-    _load();
+  NotificationService._({
+    ApiClient? apiClient,
+    FirebaseAuth? auth,
+    FirebaseMessaging? messaging,
+  })  : _apiClient = apiClient ?? ApiClient(),
+        _auth = auth ?? FirebaseAuth.instance,
+        _messaging = messaging ?? FirebaseMessaging.instance {
+    _authSubscription = _auth.authStateChanges().listen(_handleAuthChanged);
   }
 
-  final List<AppNotification> _notifications = [];
+  final ApiClient _apiClient;
+  final FirebaseAuth _auth;
+  final FirebaseMessaging _messaging;
   final AudioPlayer _audioPlayer = AudioPlayer();
+
+  StreamSubscription<User?>? _authSubscription;
+  StreamSubscription<String>? _tokenRefreshSubscription;
+
+  final List<AppNotificationModel> _notifications = [];
   bool _notificationsEnabled = true;
   String _selectedMessageSound = 'classic';
-  bool _isLoaded = false;
+  bool _initialized = false;
+  bool _isBootstrapping = false;
+  String? _currentDeviceToken;
+  int _unreadCount = 0;
 
   bool get notificationsEnabled => _notificationsEnabled;
   String get selectedMessageSound => _selectedMessageSound;
+  List<AppNotificationModel> get notifications => List.unmodifiable(_notifications);
+  int get unreadCount => _unreadCount;
 
-  CollectionReference<Map<String, dynamic>>? get _notificationCollection {
-    final uid = UserAuthService.instance.currentUser?.uid;
-    if (uid == null) return null;
-    return FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .collection('notifications');
+  void _debugLog(String message) {
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print(message);
+    }
   }
 
-  DocumentReference<Map<String, dynamic>>? get _preferencesDoc {
-    final uid = UserAuthService.instance.currentUser?.uid;
-    if (uid == null) return null;
-    return FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .collection('settings')
-        .doc('notifications');
+  Future<void> initialize() async {
+    if (_initialized) return;
+    _initialized = true;
+
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+    await _requestPermissionIfNeeded();
+
+    FirebaseMessaging.onMessage.listen((message) async {
+      await _handleIncomingMessage(message, navigate: false, showBanner: true);
+    });
+
+    FirebaseMessaging.onMessageOpenedApp.listen((message) async {
+      await _handleIncomingMessage(message, navigate: true, showBanner: false);
+    });
+
+    final initialMessage = await _messaging.getInitialMessage();
+    if (initialMessage != null) {
+      await _handleIncomingMessage(
+        initialMessage,
+        navigate: true,
+        showBanner: false,
+      );
+    }
+
+    _tokenRefreshSubscription = _messaging.onTokenRefresh.listen((token) async {
+      _currentDeviceToken = token;
+      await registerCurrentDeviceToken(tokenOverride: token);
+    });
+
+    await _handleAuthChanged(_auth.currentUser);
   }
 
-  Future<void> _load() async {
-    if (_isLoaded) return;
-    _isLoaded = true;
+  Future<void> _handleAuthChanged(User? user) async {
+    if (_isBootstrapping) return;
+    _isBootstrapping = true;
+
     try {
-      final preferences = await _preferencesDoc?.get();
-      final settings = preferences?.data();
-      if (settings != null) {
-        _notificationsEnabled =
-            (settings['enabled'] as bool?) ?? _notificationsEnabled;
-        _selectedMessageSound =
-            (settings['sound'] as String?) ?? _selectedMessageSound;
+      if (user == null) {
+        _notifications.clear();
+        _unreadCount = 0;
+        notifyListeners();
+        return;
       }
 
-      final snapshot = await _notificationCollection
-          ?.orderBy('createdAt', descending: true)
-          .limit(50)
-          .get();
-      if (snapshot != null) {
-        _notifications
-          ..clear()
-          ..addAll(
-            snapshot.docs.map((doc) {
-              final data = doc.data();
-              return AppNotification(
-                id: doc.id,
-                title: data['title'] as String? ?? '',
-                message: data['message'] as String? ?? '',
-                createdAt:
-                    (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-                type: data['type'] as String?,
-                targetId: data['targetId'] as String?,
-                isRead: (data['isRead'] as bool?) ?? false,
-              );
-            }),
-          );
+      await _requestPermissionIfNeeded();
+      final token = await _messaging.getToken();
+      _currentDeviceToken = token;
+      if (token != null && token.isNotEmpty) {
+        await registerCurrentDeviceToken(tokenOverride: token);
       }
+      await fetchNotifications();
+    } catch (error) {
+      _debugLog('Bootstrap notifications ignoré: $error');
+      // On ne bloque pas l'application si FCM n'est pas disponible localement.
+    } finally {
+      _isBootstrapping = false;
+    }
+  }
+
+  Future<void> fetchNotifications() async {
+    final response = await _apiClient.getJson(
+      '/api/v1/notifications',
+      headers: await _authHeaders(),
+    );
+
+    final data = (response['data'] as List?) ?? const [];
+    _notifications
+      ..clear()
+      ..addAll(
+        data
+            .whereType<Map>()
+            .map((item) => AppNotificationModel.fromJson(Map<String, dynamic>.from(item))),
+      );
+
+    final meta = Map<String, dynamic>.from((response['meta'] as Map?) ?? const {});
+    _unreadCount = (meta['unread_count'] as num?)?.toInt() ??
+        _notifications.where((item) => !item.isRead).length;
+
+    notifyListeners();
+  }
+
+  Future<void> markAllAsRead() async {
+    await _apiClient.postJson(
+      '/api/v1/notifications/read-all',
+      headers: await _authHeaders(),
+    );
+
+    for (var index = 0; index < _notifications.length; index++) {
+      _notifications[index] = _notifications[index].copyWith(isRead: true);
+    }
+    _unreadCount = 0;
+    notifyListeners();
+  }
+
+  Future<void> markAsRead(int id) async {
+    await _apiClient.postJson(
+      '/api/v1/notifications/$id/read',
+      headers: await _authHeaders(),
+    );
+
+    final index = _notifications.indexWhere((item) => item.id == id);
+    if (index == -1) return;
+
+    if (!_notifications[index].isRead) {
+      _notifications[index] = _notifications[index].copyWith(isRead: true);
+      _unreadCount = (_unreadCount - 1).clamp(0, 1 << 30);
       notifyListeners();
-    } catch (_) {}
+    }
   }
 
-  Future<void> _savePreferences() async {
+  Future<void> registerCurrentDeviceToken({String? tokenOverride}) async {
+    final token = tokenOverride ?? _currentDeviceToken ?? await _messaging.getToken();
+    if (token == null || token.isEmpty) return;
+
+    await _apiClient.postJson(
+      '/api/v1/device-tokens',
+      headers: await _authHeaders(),
+      body: {
+        'token': token,
+        'platform': _platformName,
+        'device_name': null,
+        'app_version': null,
+      },
+    );
+
+    _currentDeviceToken = token;
+  }
+
+  Future<void> deactivateCurrentDeviceToken() async {
+    final token = _currentDeviceToken;
+    if (token == null || token.isEmpty) return;
+
     try {
-      await _preferencesDoc?.set({
-        'enabled': _notificationsEnabled,
-        'sound': _selectedMessageSound,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (_) {}
+      await _apiClient.postJson(
+        '/api/v1/device-tokens/deactivate',
+        headers: await _authHeaders(),
+        body: {'token': token},
+      );
+    } catch (error) {
+      _debugLog('Désactivation token FCM ignorée au logout: $error');
+      // Logout ne doit pas être bloqué par un échec réseau.
+    }
+  }
+
+  void addNotification({
+    required String title,
+    required String message,
+    String? type,
+    String? targetId,
+  }) {
+    final local = AppNotificationModel(
+      id: DateTime.now().millisecondsSinceEpoch,
+      type: type ?? 'generic',
+      title: title,
+      body: message,
+      data: {
+        if (targetId != null) 'target_id': targetId,
+        'type': type ?? 'generic',
+      },
+      isRead: false,
+      createdAt: DateTime.now(),
+    );
+
+    _notifications.insert(0, local);
+    _unreadCount += 1;
+    notifyListeners();
   }
 
   void addOrderNotification(String orderNumber) {
     addNotification(
       title: 'Commande',
-      message: 'Votre commande n°$orderNumber a été enregistrée.',
-      type: 'order',
+      message: 'Votre commande $orderNumber a été enregistrée.',
+      type: 'order_created',
       targetId: orderNumber,
     );
   }
@@ -121,8 +234,8 @@ class NotificationService extends ChangeNotifier {
   void addReservationNotification(String restaurant) {
     addNotification(
       title: 'Réservation',
-      message: 'Votre réservation chez $restaurant est confirmée.',
-      type: 'reservation',
+      message: 'Votre réservation chez $restaurant a été enregistrée.',
+      type: 'reservation_created',
     );
   }
 
@@ -139,65 +252,12 @@ class NotificationService extends ChangeNotifier {
     required String conversationId,
   }) {
     if (!_notificationsEnabled) return;
-
-    final soundLabel =
-        _selectedMessageSound == 'soft' ? 'Son doux' : 'Son classique';
-    _playSelectedSound();
     addNotification(
       title: 'Message reçu',
-      message: '$conversationTitle • $soundLabel',
+      message: conversationTitle,
       type: 'message',
       targetId: conversationId,
     );
-  }
-
-  List<AppNotification> get notifications => List.unmodifiable(_notifications);
-
-  int get unreadCount =>
-      _notifications.where((notification) => !notification.isRead).length;
-
-  void markAllAsRead() {
-    for (final notification in _notifications) {
-      notification.isRead = true;
-    }
-    notifyListeners();
-    for (final notification in _notifications) {
-      _notificationCollection?.doc(notification.id).update({'isRead': true});
-    }
-  }
-
-  void markAsRead(String id) {
-    final index = _notifications.indexWhere((item) => item.id == id);
-
-    if (index == -1) return;
-
-    _notifications[index].isRead = true;
-    notifyListeners();
-    _notificationCollection?.doc(id).update({'isRead': true});
-  }
-
-  void addNotification({
-    required String title,
-    required String message,
-    String? type,
-    String? targetId,
-  }) {
-    if (!_notificationsEnabled) return;
-
-    _notifications.insert(
-      0,
-      AppNotification(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        title: title,
-        message: message,
-        createdAt: DateTime.now(),
-        type: type,
-        targetId: targetId,
-      ),
-    );
-
-    notifyListeners();
-    _persistNotification(_notifications.first);
   }
 
   void updatePreferences({
@@ -207,25 +267,70 @@ class NotificationService extends ChangeNotifier {
     _notificationsEnabled = enabled;
     _selectedMessageSound = sound;
     notifyListeners();
-    _savePreferences();
-  }
-
-  Future<void> _persistNotification(AppNotification notification) async {
-    try {
-      await _notificationCollection?.doc(notification.id).set({
-        'title': notification.title,
-        'message': notification.message,
-        'createdAt': Timestamp.fromDate(notification.createdAt),
-        'type': notification.type,
-        'targetId': notification.targetId,
-        'isRead': notification.isRead,
-      });
-    } catch (_) {}
   }
 
   Future<void> previewSelectedSound() async {
     if (!_notificationsEnabled) return;
     await _playSelectedSound();
+  }
+
+  Future<void> _handleIncomingMessage(
+    RemoteMessage message, {
+    required bool navigate,
+    required bool showBanner,
+  }) async {
+    final parsed = _mapRemoteMessage(message);
+
+    if (parsed == null) {
+      return;
+    }
+
+    _notifications.insert(0, parsed);
+    if (!parsed.isRead) {
+      _unreadCount += 1;
+    }
+    notifyListeners();
+
+    if (showBanner && _notificationsEnabled) {
+      NotificationNavigationService.instance
+          .showForegroundBanner(parsed.title, parsed.body);
+      await _playSelectedSound();
+    }
+
+    if (navigate) {
+      NotificationNavigationService.instance.handlePayload(parsed.data);
+    }
+  }
+
+  AppNotificationModel? _mapRemoteMessage(RemoteMessage message) {
+    final notification = message.notification;
+    final data = Map<String, dynamic>.from(message.data);
+    final title = notification?.title ?? (data['title'] ?? '').toString();
+    final body = notification?.body ?? (data['body'] ?? '').toString();
+
+    if (title.trim().isEmpty && body.trim().isEmpty) {
+      return null;
+    }
+
+    return AppNotificationModel(
+      id: int.tryParse((data['notification_id'] ?? '0').toString()) ??
+          DateTime.now().millisecondsSinceEpoch,
+      type: (data['type'] ?? 'generic').toString(),
+      title: title,
+      body: body,
+      data: data,
+      isRead: false,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  Future<void> _requestPermissionIfNeeded() async {
+    await _messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+      provisional: false,
+    );
   }
 
   Future<void> _playSelectedSound() async {
@@ -236,11 +341,45 @@ class NotificationService extends ChangeNotifier {
     try {
       await _audioPlayer.stop();
       await _audioPlayer.play(AssetSource(assetPath));
-    } catch (_) {}
+    } catch (error) {
+      _debugLog('Lecture son notification indisponible: $error');
+    }
   }
 
-  void clear() {
-    _notifications.clear();
-    notifyListeners();
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    _tokenRefreshSubscription?.cancel();
+    _audioPlayer.dispose();
+    super.dispose();
   }
+
+  Future<Map<String, String>> _authHeaders() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw const ApiException(
+        statusCode: 401,
+        message: 'Utilisateur non connecté.',
+      );
+    }
+
+    final token = await user.getIdToken(true);
+    return <String, String>{
+      'Authorization': 'Bearer $token',
+    };
+  }
+
+  String get _platformName {
+    if (kIsWeb) return 'web';
+    if (Platform.isIOS) return 'ios';
+    if (Platform.isAndroid) return 'android';
+    return 'unknown';
+  }
+}
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 }

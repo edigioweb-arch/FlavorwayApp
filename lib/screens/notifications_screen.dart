@@ -2,12 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../services/notification_service.dart';
-import 'chat_screen.dart';
-import 'messages_screen.dart';
-import 'order_tracking_screen.dart';
+import '../services/notification_navigation_service.dart';
 
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
+
+  @override
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationService.instance.fetchNotifications();
+    });
+  }
 
   static const Color violetFlavor = Color(0xFF4B1F5C);
 
@@ -33,7 +44,7 @@ class NotificationsScreen extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            onPressed: NotificationService.instance.markAllAsRead,
+            onPressed: () => NotificationService.instance.markAllAsRead(),
             icon: const Icon(Icons.done_all_rounded),
             color: violetFlavor,
           ),
@@ -64,57 +75,13 @@ class NotificationsScreen extends StatelessWidget {
               return _NotificationCard(
                 icon: Icons.notifications_rounded,
                 title: notification.title,
-                message: notification.message,
+                message: notification.body,
                 time: _formatTime(notification.createdAt),
                 isRead: notification.isRead,
-                onTap: () {
-                  NotificationService.instance.markAsRead(notification.id);
-
-                  if (notification.type == 'order') {
-                    final orderId = notification.targetId ?? '';
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => OrderTrackingScreen(
-                          orderId: orderId,
-                        ),
-                      ),
-                    );
-                    return;
-                  }
-
-                  if (notification.type == 'reservation') {
-                    Navigator.pushNamed(context, '/reservations');
-                    return;
-                  }
-
-                  if (notification.type == 'cart') {
-                    Navigator.pushNamed(context, '/cart');
-                    return;
-                  }
-
-                  if (notification.type == 'message' &&
-                      notification.targetId != null &&
-                      notification.targetId!.isNotEmpty) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ChatScreen(
-                          conversationId: notification.targetId!,
-                        ),
-                      ),
-                    );
-                    return;
-                  }
-
-                  if (notification.type == 'support') {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const MessagesScreen(),
-                      ),
-                    );
-                  }
+                onTap: () async {
+                  await NotificationService.instance.markAsRead(notification.id);
+                  NotificationNavigationService.instance
+                      .handlePayload(notification.data);
                 },
               );
             },
