@@ -3,7 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../services/order_service.dart';
 
 class OrdersScreen extends StatefulWidget {
-  const OrdersScreen({super.key});
+  const OrdersScreen({super.key, this.orderService});
+
+  final OrderService? orderService;
 
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
@@ -85,8 +87,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 
   Widget _buildActiveOrders() {
-    return StreamBuilder<List<OrderModel>>(
-      stream: OrderService.instance.activeOrdersStream,
+    return _OrdersStreamBuilder(
+      key: const ValueKey('active-orders'),
+      streamFactory: () =>
+          (widget.orderService ?? OrderService.instance).activeOrdersStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -128,8 +132,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 
   Widget _buildOrdersHistory() {
-    return StreamBuilder<List<OrderModel>>(
-      stream: OrderService.instance.completedOrdersStream,
+    return _OrdersStreamBuilder(
+      key: const ValueKey('history-orders'),
+      streamFactory: () =>
+          (widget.orderService ?? OrderService.instance).completedOrdersStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -160,9 +166,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
               items:
                   '${order.items.fold<int>(0, (sum, item) => sum + item.quantity)} article(s)',
               status: order.displayStatus,
-              statusColor: order.status == 'delivered'
-                  ? Colors.green
-                  : Colors.orange,
+              statusColor:
+                  order.status == 'delivered' ? Colors.green : Colors.orange,
               isActive: false,
               orderId: order.orderNumber,
             );
@@ -448,4 +453,26 @@ class _OrdersScreenState extends State<OrdersScreen> {
       },
     );
   }
+}
+
+// TabBarView peut démonter puis remonter un onglet. Chaque montage doit obtenir
+// un nouveau flux à abonnement unique, sans réécouter celui du montage précédent.
+class _OrdersStreamBuilder extends StatefulWidget {
+  const _OrdersStreamBuilder(
+      {super.key, required this.streamFactory, required this.builder});
+  final Stream<List<OrderModel>> Function() streamFactory;
+  final AsyncWidgetBuilder<List<OrderModel>> builder;
+
+  @override
+  State<_OrdersStreamBuilder> createState() => _OrdersStreamBuilderState();
+}
+
+class _OrdersStreamBuilderState extends State<_OrdersStreamBuilder> {
+  late final Stream<List<OrderModel>> _stream = widget.streamFactory();
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<List<OrderModel>>(
+        stream: _stream,
+        builder: widget.builder,
+      );
 }

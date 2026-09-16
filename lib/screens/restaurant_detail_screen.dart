@@ -6,6 +6,7 @@ import '../models/restaurant_model.dart';
 import '../services/restaurant_service.dart';
 import 'product_detail_screen.dart';
 import '../widgets/restaurant_gallery_lightbox.dart';
+import '../widgets/product_quick_add.dart';
 
 class RestaurantDetailScreen extends StatefulWidget {
   const RestaurantDetailScreen({super.key});
@@ -350,7 +351,9 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Row(
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 4,
                     children: [
                       Text(
                         dish.priceText,
@@ -360,7 +363,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(width: 10),
                       Text(
                         dish.isAvailable ? 'Disponible' : 'Indisponible',
                         style: GoogleFonts.poppins(
@@ -376,7 +378,15 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, color: violetDark),
+            const SizedBox(width: 8),
+            ProductQuickAdd(
+              dish: dish,
+              onOpenDetail: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ProductDetailScreen(dish: dish),
+                ),
+              ),
+            ),
           ],
         ),
       ),
