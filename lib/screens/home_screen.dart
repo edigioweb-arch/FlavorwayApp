@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../widgets/cart_button.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -462,6 +463,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      const CartButton(),
+                      const SizedBox(width: 8),
                       _buildMessageButton(),
                       const SizedBox(width: 10),
                       _buildNotificationButton(),
@@ -894,9 +897,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _lastLoadedCityId = cityId;
     await restaurantService.loadRestaurants(
-          forceRefresh: true,
-          cityId: cityId,
-        );
+      forceRefresh: true,
+      cityId: cityId,
+    );
   }
 
   void _startPromoAutoSlide() {
@@ -941,9 +944,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           ? city.countryName
                           : '${city.countryName} • Bientôt disponible',
                     ),
-                    trailing: city.id == context.read<CityService>().selectedCity?.id
-                        ? const Icon(Icons.check, color: orangeFlavor)
-                        : null,
+                    trailing:
+                        city.id == context.read<CityService>().selectedCity?.id
+                            ? const Icon(Icons.check, color: orangeFlavor)
+                            : null,
                     onTap: () async {
                       await context.read<CityService>().selectCity(city);
                       if (!sheetContext.mounted) {

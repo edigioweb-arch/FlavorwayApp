@@ -1,14 +1,20 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/city_model.dart';
 import '../services/city_api_service.dart';
 import '../services/user_auth_service.dart';
 import 'login_screen.dart';
+import 'signup_success_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({super.key});
+  const SignUpScreen({
+    super.key,
+    this.initialRole = 'client',
+    this.cityApiService,
+  });
+
+  final String initialRole;
+  final CityApiService? cityApiService;
 
   @override
   State<SignUpScreen> createState() => _SignUpScreenState();
@@ -32,6 +38,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController _cuisineTypeController = TextEditingController();
   final TextEditingController _licenseController = TextEditingController();
   final TextEditingController _restaurantDeliveryFeeController =
+      TextEditingController();
+  final TextEditingController _restaurantCourierCountController =
       TextEditingController();
 
   bool _acceptTerms = false;
@@ -60,6 +68,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   void initState() {
     super.initState();
+    _userRole = widget.initialRole == 'restaurant' ? 'restaurant' : 'client';
     _loadCities();
   }
 
@@ -78,14 +87,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _cuisineTypeController.dispose();
     _licenseController.dispose();
     _restaurantDeliveryFeeController.dispose();
+    _restaurantCourierCountController.dispose();
     super.dispose();
   }
 
   Future<void> _loadCities() async {
+    if (_isLoadingCities) return;
     setState(() => _isLoadingCities = true);
 
     try {
-      final cities = await CityApiService().fetchCities();
+      final cities =
+          await (widget.cityApiService ?? CityApiService()).fetchCities();
       if (!mounted) {
         return;
       }
@@ -111,9 +123,29 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-  bool _isStepValid() {
-    if (_userRole == null) return false;
+  String? get _clientEmailError {
+    final email = _emailController.text.trim();
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      return 'Saisissez un email valide, par exemple nom@exemple.com.';
+    }
+    return null;
+  }
 
+  String? get _clientPhoneError {
+    final phone =
+        _phoneController.text.trim().replaceAll(RegExp(r'[\s().-]'), '');
+    final digits = phone.startsWith('+') ? phone.substring(1) : phone;
+    if (!RegExp(r'^[1-9][0-9]{7,14}$').hasMatch(digits)) {
+      return 'Indiquez le pays et le numéro : +242 06 123 45 67.';
+    }
+    // Congo: +242 followed by exactly 9 national digits (ITU numbering plan).
+    if (digits.startsWith('242') && digits.length != 12) {
+      return 'Congo : 242 suivi de 9 chiffres, par exemple 242 06 123 45 67.';
+    }
+    return null;
+  }
+
+  bool _isStepValid() {
     if (_userRole == 'client') {
       if (_currentStep == 0) {
         final passwordValid = _passController.text.length >= 6;
@@ -123,8 +155,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
         return _fullNameController.text.trim().isNotEmpty &&
             _usernameController.text.trim().isNotEmpty &&
             _usernameError == null &&
-            _emailController.text.trim().contains('@') &&
-            _phoneController.text.trim().isNotEmpty &&
+            _clientEmailError == null &&
+            _clientPhoneError == null &&
             passwordValid &&
             confirmValid;
       }
@@ -146,7 +178,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
           _cuisineTypeController.text.trim().isNotEmpty &&
           _licenseController.text.trim().isNotEmpty &&
           (!_restaurantOwnDelivery ||
-              double.tryParse(_restaurantDeliveryFeeController.text.trim()) != null);
+              (double.tryParse(_restaurantDeliveryFeeController.text.trim()) !=
+                      null &&
+                  (int.tryParse(
+                              _restaurantCourierCountController.text.trim()) ??
+                          0) >
+                      0));
     }
 
     final passwordValid = _passController.text.length >= 6;
@@ -202,6 +239,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return;
     }
 
+    if (_userRole == 'client') {
+      FocusScope.of(context).unfocus();
+    }
     await _pageController.nextPage(
       duration: const Duration(milliseconds: 350),
       curve: Curves.easeInOut,
@@ -247,21 +287,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
           'licenseNumber': _licenseController.text.trim(),
           'deliveryMode': _restaurantOwnDelivery ? 'restaurant' : 'flavorway',
           'restaurantDeliveryFee': _restaurantOwnDelivery
-              ? double.tryParse(_restaurantDeliveryFeeController.text.trim()) ?? 0
+              ? double.tryParse(_restaurantDeliveryFeeController.text.trim()) ??
+                  0
+              : null,
+          'requestedCourierCount': _restaurantOwnDelivery
+              ? int.tryParse(_restaurantCourierCountController.text.trim())
               : null,
         });
       }
 
       // Utiliser UserAuthService.signUp() qui crée Firebase Auth + Firestore
-      await UserAuthService.instance.signUp(
+      final verificationError = await UserAuthService.instance.signUp(
         email: _emailController.text.trim(),
         password: _passController.text,
         profileData: profileData,
       );
 
       if (!mounted) return;
-      await UserAuthService.instance.signOut();
-      await _showSuccessDialog();
+      await _showSuccessDialog(verificationError);
     } on UserAuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -281,7 +324,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-  Future<void> _showSuccessDialog() async {
+  Future<void> _showSuccessDialog(String? verificationError) async {
     final bool isRestaurant = _userRole == 'restaurant';
     final String title = isRestaurant
         ? 'Compte restaurateur créé avec succès !'
@@ -289,16 +332,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final String message = isRestaurant
         ? 'Votre demande restaurateur a bien été enregistrée.'
         : 'Votre compte FlavorWay a bien été créé.';
-    final String subtitle = isRestaurant
-        ? 'Vous pouvez maintenant vous connecter et suivre la validation de votre compte.'
-        : 'Vous pouvez maintenant vous connecter.';
-
     await Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => _SignupSuccessScreen(
+        builder: (_) => SignupSuccessScreen(
           title: title,
           message: message,
-          subtitle: subtitle,
+          verificationError: verificationError,
+          resendEmail: UserAuthService.instance.sendEmailVerification,
+          signOut: UserAuthService.instance.signOut,
         ),
       ),
     );
@@ -307,9 +348,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void _goBack(BuildContext context) {
     if (_isLoading) return;
 
-    if (_userRole != null && _currentStep == 0) {
-      setState(() => _userRole = null);
-    } else if (_currentStep > 0) {
+    if (_currentStep > 0) {
       _pageController.previousPage(
           duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
       setState(() => _currentStep--);
@@ -328,13 +367,35 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_userRole == 'client') {
+      return Scaffold(
+        backgroundColor: violetFlavor,
+        resizeToAvoidBottomInset: true,
+        body: SafeArea(
+          child: Column(children: [
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  _buildClientPage(_stepClient1(), 'client-identity'),
+                  _buildClientPage(
+                      _stepFinal(isRestaurant: false), 'client-address'),
+                ],
+              ),
+            ),
+          ]),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: violetFlavor,
+      resizeToAvoidBottomInset: false,
       body: SafeArea(
         child: Column(
           children: [
             Expanded(
-              child: SingleChildScrollView(
+              child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 28),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -349,44 +410,63 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     const SizedBox(height: 20),
                     _buildTitleSection(),
                     const SizedBox(height: 20),
-                    if (_userRole == null)
-                      _buildRoleSelection()
-                    else ...[
-                      _buildProgressIndicator(),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        height: _userRole == 'restaurant' ? 500 : 420,
-                        child: PageView(
-                          controller: _pageController,
-                          physics: const NeverScrollableScrollPhysics(),
-                          children: _userRole == 'client'
-                              ? [
-                                  _stepClient1(),
-                                  _stepFinal(isRestaurant: false)
-                                ]
-                              : [
-                                  _stepResto1(),
-                                  _stepResto2(),
-                                  _stepFinal(isRestaurant: true)
-                                ],
-                        ),
+                    _buildProgressIndicator(),
+                    const SizedBox(height: 20),
+                    Expanded(
+                      child: PageView(
+                        controller: _pageController,
+                        physics: const NeverScrollableScrollPhysics(),
+                        children: _userRole == 'client'
+                            ? [_stepClient1(), _stepFinal(isRestaurant: false)]
+                            : [
+                                _stepResto1(),
+                                _stepResto2(),
+                                _stepFinal(isRestaurant: true)
+                              ],
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ),
             ),
-            if (_userRole != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(28, 10, 28, 10),
-                child: _buildBottomButton(),
-              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(28, 10, 28, 10),
+              child: _buildBottomButton(),
+            ),
             Padding(
               padding: const EdgeInsets.only(bottom: 15),
               child: _buildFooterLogin(),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildClientPage(Widget form, String pageKey) {
+    return SingleChildScrollView(
+      key: PageStorageKey<String>(pageKey),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.fromLTRB(28, 10, 28, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          IconButton(
+            onPressed: () => _goBack(context),
+            icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+          ),
+          _buildLogoHeader(),
+          const SizedBox(height: 20),
+          _buildTitleSection(),
+          const SizedBox(height: 20),
+          _buildProgressIndicator(),
+          const SizedBox(height: 20),
+          form,
+          const SizedBox(height: 20),
+          _buildBottomButton(),
+          const SizedBox(height: 20),
+          Center(child: _buildFooterLogin()),
+        ],
       ),
     );
   }
@@ -457,16 +537,26 @@ class _SignUpScreenState extends State<SignUpScreen> {
         _buildInputField(
             hint: 'Email',
             icon: Icons.email_outlined,
-            controller: _emailController),
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            errorText:
+                _emailController.text.isEmpty ? null : _clientEmailError),
         const SizedBox(height: 15),
         _buildInputField(
-            hint: 'Téléphone pour OTP',
+            hint: 'Téléphone',
             icon: Icons.phone_outlined,
-            controller: _phoneController),
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            errorText:
+                _phoneController.text.isEmpty ? null : _clientPhoneError),
         const SizedBox(height: 15),
         _buildPasswordField(
           controller: _passController,
           hint: 'Mot de passe',
+          errorText:
+              _passController.text.isNotEmpty && _passController.text.length < 6
+                  ? 'Le mot de passe doit contenir au moins 6 caractères.'
+                  : null,
           isObscure: _isObscure,
           onToggleObscure: () => setState(() => _isObscure = !_isObscure),
           onChanged: (v) {
@@ -564,6 +654,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     _restaurantOwnDelivery = selection.first;
                     if (!_restaurantOwnDelivery) {
                       _restaurantDeliveryFeeController.clear();
+                      _restaurantCourierCountController.clear();
                     }
                   });
                 },
@@ -575,9 +666,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   icon: Icons.local_shipping_outlined,
                   controller: _restaurantDeliveryFeeController,
                 ),
+                const SizedBox(height: 12),
+                _buildInputField(
+                  hint: 'Nombre de livreurs prévus (1, 2, 3…)',
+                  icon: Icons.groups_outlined,
+                  controller: _restaurantCourierCountController,
+                ),
                 const SizedBox(height: 8),
                 Text(
-                  'Vous serez responsable de l’exécution de la livraison pour les commandes de votre restaurant.',
+                  'Capacité déclarée uniquement. L’administration créera et rattachera les comptes livreurs après validation.',
                   style: GoogleFonts.poppins(
                     color: violetDark.withOpacity(0.72),
                     fontSize: 11,
@@ -716,10 +813,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     required IconData icon,
     TextEditingController? controller,
     String? errorText,
+    TextInputType? keyboardType,
     Function(String)? onChanged,
   }) {
     return TextField(
       controller: controller,
+      keyboardType: keyboardType,
       onChanged: (v) {
         if (onChanged != null) onChanged(v);
         setState(() {});
@@ -738,6 +837,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
         ),
         prefixIcon: Icon(icon, color: violetFlavor),
         errorText: errorText,
+        errorMaxLines: _userRole == 'client' ? 3 : null,
+        errorStyle: _userRole == 'client'
+            ? const TextStyle(color: Color(0xFFFFD6CE))
+            : null,
         filled: true,
         fillColor: Colors.white,
         contentPadding:
@@ -787,6 +890,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 color: Colors.grey.shade500),
             onPressed: onToggleObscure),
         errorText: errorText,
+        errorMaxLines: _userRole == 'client' ? 3 : null,
+        errorStyle: _userRole == 'client'
+            ? const TextStyle(color: Color(0xFFFFD6CE))
+            : null,
         filled: true,
         fillColor: Colors.white,
         contentPadding:
@@ -804,9 +911,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
+  Future<void> _openCountryPicker() async {
+    FocusScope.of(context).unfocus();
+    if (_isLoadingCities) return;
+    if (_countryLabels.isEmpty) await _loadCities();
+    if (!mounted || _countryLabels.isEmpty) return;
+    _showCountryPicker();
+  }
+
   Widget _buildCountryDropdown() {
     return GestureDetector(
-      onTap: _isLoadingCities || _countryLabels.isEmpty ? null : () => _showCountryPicker(),
+      onTap: _isLoadingCities ? null : _openCountryPicker,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         decoration: BoxDecoration(
@@ -815,7 +930,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
           const Icon(Icons.public, color: violetFlavor),
           const SizedBox(width: 12),
           Expanded(
-              child: Text(_selectedCountry ?? (_isLoadingCities ? 'Chargement des pays...' : 'Choisir un pays'),
+              child: Text(
+                  _selectedCountry ??
+                      (_isLoadingCities
+                          ? 'Chargement des pays...'
+                          : _countryLabels.isEmpty
+                              ? 'Pays indisponibles — Réessayer'
+                              : 'Choisir un pays'),
                   style: GoogleFonts.poppins(
                       color: _selectedCountry == null
                           ? Colors.grey
@@ -827,10 +948,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Widget _buildCityDropdown() {
-    final cities = _selectedCountry == null ? <String>[] : _citiesForCountry(_selectedCountry!);
+    final cities = _selectedCountry == null
+        ? <String>[]
+        : _citiesForCountry(_selectedCountry!);
 
     return GestureDetector(
-      onTap: _isLoadingCities || cities.isEmpty ? null : () => _showCityPicker(cities),
+      onTap: _isLoadingCities
+          ? null
+          : _selectedCountry == null
+              ? _openCountryPicker
+              : cities.isEmpty
+                  ? null
+                  : () {
+                      FocusScope.of(context).unfocus();
+                      _showCityPicker(cities);
+                    },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         decoration: BoxDecoration(
@@ -945,7 +1077,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
               ),
             ],
           ),
-          child: const Icon(Icons.restaurant, color: orangeFlavor, size: 42)),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(90),
+            child: Image.asset(
+              'assets/images/logo.jpeg',
+              fit: BoxFit.cover,
+            ),
+          )),
       const SizedBox(height: 10),
       Text('FlavorWay',
           style: GoogleFonts.poppins(
@@ -955,46 +1093,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   Widget _buildTitleSection() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(
-          _userRole == null
-              ? 'Créer un compte'
-              : (_userRole == 'client' ? 'Compte Client' : 'Compte Pro'),
+      Text(_userRole == 'client' ? 'Compte Client' : 'Compte Pro',
           style: GoogleFonts.poppins(
               fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
       const Text('Veuillez remplir les informations ci-dessous.',
           style: TextStyle(color: Colors.white70)),
     ]);
-  }
-
-  Widget _buildRoleSelection() {
-    return Column(children: [
-      _roleButton("Je suis un client", Icons.person_outline, 'client'),
-      const SizedBox(height: 16),
-      _roleButton(
-          "Je suis un restaurateur", Icons.storefront_outlined, 'restaurant'),
-    ]);
-  }
-
-  Widget _roleButton(String text, IconData icon, String role) {
-    return SizedBox(
-        width: double.infinity,
-        height: 58,
-        child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(90))),
-            onPressed: () => setState(() {
-                  _userRole = role;
-                  _currentStep = 0;
-                }),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(icon, color: violetFlavor),
-              const SizedBox(width: 10),
-              Text(text,
-                  style: GoogleFonts.poppins(
-                      color: violetFlavor, fontWeight: FontWeight.w600))
-            ])));
   }
 
   Widget _buildProgressIndicator() {
@@ -1025,151 +1129,5 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   style: TextStyle(
                       color: orangeFlavor, fontWeight: FontWeight.bold))
             ])));
-  }
-}
-
-class _SignupSuccessScreen extends StatefulWidget {
-  const _SignupSuccessScreen({
-    required this.title,
-    required this.message,
-    required this.subtitle,
-  });
-
-  final String title;
-  final String message;
-  final String subtitle;
-
-  @override
-  State<_SignupSuccessScreen> createState() => _SignupSuccessScreenState();
-}
-
-class _SignupSuccessScreenState extends State<_SignupSuccessScreen> {
-  Timer? _redirectTimer;
-
-  static const Color _successGreen = Color(0xFF18A558);
-  static const Color _successGreenDark = Color(0xFF0E7A40);
-  static const Color _surface = Color(0xFFEFFFF6);
-
-  @override
-  void initState() {
-    super.initState();
-    _redirectTimer = Timer(const Duration(seconds: 2), _goToLogin);
-  }
-
-  @override
-  void dispose() {
-    _redirectTimer?.cancel();
-    super.dispose();
-  }
-
-  void _goToLogin() {
-    if (!mounted) {
-      return;
-    }
-
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _successGreen,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-          child: Column(
-            children: [
-              const Spacer(),
-              Container(
-                width: 132,
-                height: 132,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.12),
-                      blurRadius: 28,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.check_rounded,
-                  size: 78,
-                  color: _successGreen,
-                ),
-              ),
-              const SizedBox(height: 34),
-              Text(
-                widget.title,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: _surface,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Text(
-                  widget.message,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                    color: _successGreenDark,
-                    fontSize: 15,
-                    height: 1.55,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                widget.subtitle,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 15,
-                  height: 1.45,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                height: 58,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: _successGreenDark,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  onPressed: _goToLogin,
-                  child: Text(
-                    'Se connecter',
-                    style: GoogleFonts.poppins(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }

@@ -31,13 +31,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   static const Color violetFlavor = Color(0xFF4B1F5C);
 
   int quantity = 1;
-  final Map<String, String> _selectedOptionValues = {};
+  final Map<String, Set<String>> _selectedOptionValues = {};
 
   String get _name => widget.dish?.name ?? widget.productName;
   String get _description =>
       widget.dish?.description ?? widget.productDescription;
   String? get _image => widget.dish?.image ?? widget.productImage;
-  double get _price => widget.dish?.price ?? _parseLegacyPrice(widget.productPrice);
+  double get _price =>
+      widget.dish?.price ?? _parseLegacyPrice(widget.productPrice);
   String get _priceText =>
       widget.dish?.priceText ?? '${_price.toStringAsFixed(0)} FCFA';
   bool get _hasOptions => (widget.dish?.options ?? const []).isNotEmpty;
@@ -115,6 +116,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       ),
                     ],
                   ),
+                  if (widget.dish?.isAvailable == false)
+                    const Text('Ce produit est actuellement indisponible.',
+                        style: TextStyle(color: Colors.red)),
                   const SizedBox(height: 22),
                   if (_hasOptions) ...[
                     Text(
@@ -126,7 +130,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    ...widget.dish!.options.map(_buildOptionCard),
+                    ...widget.dish!.options
+                        .where((option) => option.isActive)
+                        .map(_buildOptionCard),
                   ],
                   const SizedBox(height: 16),
                   Text(
@@ -182,43 +188,56 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           child: SizedBox(
             height: 54,
             child: ElevatedButton(
-              onPressed: () {
-                if (!_canAddToCart) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Veuillez sélectionner toutes les options obligatoires.',
-                      ),
-                    ),
-                  );
-                  return;
-                }
+              onPressed: !_canAddToCart
+                  ? null
+                  : () {
+                      if (!_canAddToCart) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Veuillez sélectionner toutes les options obligatoires.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
 
-                context.read<CartService>().addItem(
-                      CartItem(
-                        id:
-                            '${widget.dish?.id ?? _name}-${_selectedOptionIds.join("-")}',
-                        productId: int.tryParse(widget.dish?.id ?? '') ?? 0,
-                        restaurantId:
-                            int.tryParse(widget.dish?.restaurantId ?? '') ?? 0,
-                        name: _name,
-                        image: _image ?? '',
-                        restaurantName:
-                            widget.dish?.menuName ?? 'Restaurant FlavorWay',
-                        price: _price,
-                        currencyCode: widget.dish?.currencyCode ?? 'XAF',
-                        quantity: quantity,
-                        optionValueIds: _selectedOptionIds,
-                        options: _selectedOptionsMap,
-                      ),
-                    );
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Produit ajouté au panier'),
-                  ),
-                );
-              },
+                      try {
+                        context.read<CartService>().addItem(
+                              CartItem(
+                                id: '${widget.dish?.id ?? _name}-${_selectedOptionIds.join("-")}',
+                                productId:
+                                    int.tryParse(widget.dish?.id ?? '') ?? 0,
+                                restaurantId: int.tryParse(
+                                        widget.dish?.restaurantId ?? '') ??
+                                    0,
+                                name: _name,
+                                image: _image ?? '',
+                                restaurantName: widget.dish?.menuName ??
+                                    'Restaurant FlavorWay',
+                                price: _price + _selectedOptionsTotal,
+                                currencyCode:
+                                    widget.dish?.currencyCode ?? 'XAF',
+                                quantity: quantity,
+                                optionValueIds: _selectedOptionIds,
+                                options: _selectedOptionsMap,
+                              ),
+                            );
+                      } on StateError catch (error) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(error.message)));
+                        return;
+                      }
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('Produit ajouté au panier'),
+                          action: SnackBarAction(
+                              label: 'Voir le panier',
+                              onPressed: () =>
+                                  Navigator.pushNamed(context, '/cart')),
+                        ),
+                      );
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: violetFlavor,
                 shape: RoundedRectangleBorder(
@@ -226,7 +245,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 ),
               ),
               child: Text(
-                'Ajouter • ${total.toStringAsFixed(0)} FCFA',
+                widget.dish?.isAvailable == false
+                    ? 'Produit indisponible'
+                    : !_canAddToCart
+                        ? 'Sélectionnez les options obligatoires'
+                        : 'Ajouter • ${total.toStringAsFixed(0)} FCFA',
                 style: GoogleFonts.poppins(
                   color: Colors.white,
                   fontSize: 15,
@@ -246,7 +269,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (path == null || path.isEmpty) {
       return Container(
         color: Colors.grey.shade100,
-        child: const Icon(Icons.fastfood_rounded, size: 52, color: violetFlavor),
+        child:
+            const Icon(Icons.fastfood_rounded, size: 52, color: violetFlavor),
       );
     }
 
@@ -267,7 +291,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       fit: BoxFit.cover,
       errorBuilder: (_, __, ___) => Container(
         color: Colors.grey.shade100,
-        child: const Icon(Icons.fastfood_rounded, size: 52, color: violetFlavor),
+        child:
+            const Icon(Icons.fastfood_rounded, size: 52, color: violetFlavor),
       ),
     );
   }
@@ -321,18 +346,26 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               spacing: 8,
               runSpacing: 8,
               children: option.values.map((value) {
-                final isSelected = _selectedOptionValues[option.id] == value.id;
+                final selected = _selectedOptionValues[option.id] ?? <String>{};
+                final isSelected = selected.contains(value.id);
                 final label = (value.priceDelta ?? 0) > 0
                     ? '${value.name} (+${(value.priceDelta ?? 0).toStringAsFixed(0)} FCFA)'
                     : value.name;
 
-                return ChoiceChip(
+                return FilterChip(
                   label: Text(label),
                   selected: isSelected,
                   onSelected: value.isAvailable
                       ? (_) {
                           setState(() {
-                            _selectedOptionValues[option.id] = value.id;
+                            if (isSelected) {
+                              selected.remove(value.id);
+                            } else {
+                              if (option.selectionType == 'single')
+                                selected.clear();
+                              selected.add(value.id);
+                            }
+                            _selectedOptionValues[option.id] = selected;
                           });
                         }
                       : null,
@@ -362,53 +395,44 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   double _parseLegacyPrice(String raw) {
     final normalized = raw.replaceAll('CFA', '').replaceAll('FCFA', '').trim();
-    return double.tryParse(normalized.replaceAll(' ', '').replaceAll(',', '.')) ??
+    return double.tryParse(
+            normalized.replaceAll(' ', '').replaceAll(',', '.')) ??
         0;
   }
 
   bool get _canAddToCart {
-    if (!_hasOptions) return true;
-
-    return widget.dish!.options.every(
-      (option) => !option.isRequired || _selectedOptionValues.containsKey(option.id),
-    );
+    if (widget.dish == null || !widget.dish!.isAvailable) return false;
+    return widget.dish!.options
+        .where((option) => option.isActive)
+        .every((option) {
+      final selected = _selectedOptionValues[option.id] ?? <String>{};
+      return (!option.isRequired || selected.isNotEmpty) &&
+          (option.selectionType != 'single' || selected.length <= 1);
+    });
   }
 
   double get _selectedOptionsTotal {
-    if (!_hasOptions) return 0;
-
     double total = 0;
-    for (final option in widget.dish!.options) {
-      final selectedId = _selectedOptionValues[option.id];
-      if (selectedId == null) continue;
-      final value = option.values.cast<ProductOptionValueModel?>().firstWhere(
-            (candidate) => candidate?.id == selectedId,
-            orElse: () => null,
-          );
-      total += value?.priceDelta ?? 0;
+    for (final option in widget.dish?.options ?? <ProductOptionModel>[]) {
+      for (final value in option.values) {
+        if (_selectedOptionValues[option.id]?.contains(value.id) == true)
+          total += value.priceDelta ?? 0;
+      }
     }
     return total;
   }
 
-  List<int> get _selectedOptionIds => _selectedOptionValues.values
-      .map((id) => int.tryParse(id) ?? 0)
-      .where((id) => id > 0)
-      .toList(growable: false);
+  List<int> get _selectedOptionIds =>
+      _selectedOptionValues.values.expand((ids) => ids).map(int.parse).toList()
+        ..sort();
 
-  Map<String, dynamic> get _selectedOptionsMap {
-    final result = <String, dynamic>{};
-    if (!_hasOptions) return result;
-
-    for (final option in widget.dish!.options) {
-      final selectedId = _selectedOptionValues[option.id];
-      if (selectedId == null) continue;
-      final value = option.values.cast<ProductOptionValueModel?>().firstWhere(
-            (candidate) => candidate?.id == selectedId,
-            orElse: () => null,
-          );
-      result[option.name] = value?.name;
-    }
-
-    return result;
-  }
+  Map<String, dynamic> get _selectedOptionsMap => {
+        for (final option in widget.dish?.options ?? <ProductOptionModel>[])
+          if (_selectedOptionValues[option.id]?.isNotEmpty == true)
+            option.name: option.values
+                .where((value) =>
+                    _selectedOptionValues[option.id]!.contains(value.id))
+                .map((value) => value.name)
+                .join(', '),
+      };
 }

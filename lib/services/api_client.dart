@@ -76,7 +76,7 @@ class ApiClient {
       ..fields.addAll(fields ?? const {})
       ..files.addAll(files ?? const []);
 
-    final streamedResponse = await _sendStreamed(() => request.send());
+    final streamedResponse = await _sendStreamed(() => _client.send(request));
     final response = await http.Response.fromStream(streamedResponse);
 
     return _decodeResponse(response);
@@ -180,7 +180,8 @@ class ApiClient {
             orElse: () => const MapEntry('', []),
           );
 
-          if (firstEntry.value is List && (firstEntry.value as List).isNotEmpty) {
+          if (firstEntry.value is List &&
+              (firstEntry.value as List).isNotEmpty) {
             message = ((firstEntry.value as List).first ?? message).toString();
           }
         }

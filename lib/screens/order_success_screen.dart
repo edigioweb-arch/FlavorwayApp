@@ -11,8 +11,17 @@ class OrderSuccessScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final orderId = ModalRoute.of(context)?.settings.arguments as String? ??
-        'FLW-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+    final orderId = ModalRoute.of(context)?.settings.arguments as String?;
+    if (orderId == null || orderId.trim().isEmpty) {
+      return Scaffold(
+          appBar: AppBar(title: const Text('Commande')),
+          body: Center(
+              child: TextButton(
+            onPressed: () => Navigator.pushReplacementNamed(context, '/orders'),
+            child:
+                const Text('Référence indisponible. Consulter mes commandes'),
+          )));
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FB), // Fond clair uniforme
@@ -97,7 +106,8 @@ class OrderSuccessScreen extends StatelessWidget {
                                 color: Colors.grey.shade600,
                               ),
                             ),
-                            if (order != null && order.deliveryAddress.isNotEmpty)
+                            if (order != null &&
+                                order.deliveryAddress.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 8),
                                 child: Text(
@@ -169,7 +179,7 @@ class OrderSuccessScreen extends StatelessWidget {
                   _buildBottomButton(
                     Icons.receipt_long_outlined,
                     'Ticket',
-                    () => _showTicketSheet(context),
+                    () => _showTicketSheet(context, orderId),
                   ),
                   _buildBottomButton(
                     Icons.home_outlined,
@@ -195,7 +205,7 @@ class OrderSuccessScreen extends StatelessWidget {
     );
   }
 
-  void _showTicketSheet(BuildContext context) {
+  void _showTicketSheet(BuildContext context, String orderId) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -217,9 +227,8 @@ class OrderSuccessScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
-              _ticketLine('Commande', '#FLW-1245'),
-              _ticketLine('Statut', 'Préparation en cours'),
-              _ticketLine('Livraison estimée', '25 - 35 min'),
+              _ticketLine('Commande', orderId),
+              _ticketLine('Statut', 'Consultez le suivi de commande'),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,

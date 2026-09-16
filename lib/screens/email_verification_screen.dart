@@ -2,7 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../screens/home_screen.dart';
+import '../screens/welcome_screen.dart';
 import '../services/user_auth_service.dart';
+import '../widgets/auth_gate.dart';
 
 /// Écran affiché lorsque l'utilisateur est connecté mais n'a pas encore
 /// vérifié son adresse e-mail.
@@ -97,23 +100,44 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
         return;
       }
 
-      // 3. Si déjà vérifié côté client (sans reload)
-      if (user.emailVerified) {
-        // Déjà vérifié, AuthGate devrait déjà avoir basculé.
-        // On force un rafraîchissement du token pour être sûr que le stream réagisse.
-        await user.getIdToken(true);
-        // Pas de return ici, le finally s'occupera de _isChecking
-      }
-
-      // 4. Recharger depuis le serveur (user.reload() met à jour l'objet sur place)
+      // 3. Recharger depuis le serveur
       await user.reload();
 
-      // 5. Après reload, l'état de user.emailVerified est à jour.
-      // Cependant, user.reload() seul ne déclenche pas le stream userChanges().
-      // Pour forcer le StreamBuilder de AuthGate à se reconstruire avec le nouvel état,
-      // nous devons forcer un rafraîchissement du token.
-      if (user.emailVerified) {
-        await user.getIdToken(true);
+      // 4. Reprendre l'utilisateur frais après reload pour éviter de relire
+      // un état local obsolète.
+      final User? freshUser = FirebaseAuth.instance.currentUser;
+
+      if (freshUser == null) {
+        if (!mounted) return;
+        setState(() {
+          _errorMessage =
+              'Votre session a expiré. Veuillez vous reconnecter.';
+        });
+        return;
+      }
+
+      // 5. Vérification confirmée côté serveur.
+      if (freshUser.emailVerified) {
+        await freshUser.getIdToken(true);
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Adresse e-mail vérifiée avec succès.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => const AuthGate(
+              loginWidget: WelcomePage(),
+              homeWidget: HomeScreen(),
+            ),
+          ),
+          (route) => false,
+        );
+        return;
       }
 
       // 6. Toujours pas vérifié
@@ -121,21 +145,18 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
         setState(() {
           _errorMessage =
               'Votre adresse e-mail n\'a pas encore \u00e9t\u00e9 v\u00e9rifi\u00e9e.';
-          _isChecking = false;
         });
       }
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       setState(() {
         _errorMessage = _frenchErrorMessage(e.code);
-        _isChecking = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _errorMessage =
             'Impossible de v\u00e9rifier votre adresse e-mail. R\u00e9essayez.';
-        _isChecking = false;
       });
     } finally {
       if (mounted) setState(() => _isChecking = false);

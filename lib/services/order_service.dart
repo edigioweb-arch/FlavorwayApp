@@ -86,6 +86,10 @@ class OrderModel {
     required this.currency,
     required this.createdAt,
     required this.updatedAt,
+    this.canRetryPayment = false,
+    this.canCollectCash = false,
+    this.cashDue = 0,
+    this.rejectionReason = '',
     this.courierName = '',
     this.courierPhone = '',
     this.courierVehicle = '',
@@ -111,9 +115,27 @@ class OrderModel {
   final String currency;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final bool canRetryPayment;
+  final bool canCollectCash;
+  final double cashDue;
+  final String rejectionReason;
   final String courierName;
   final String courierPhone;
   final String courierVehicle;
+
+  String get paymentLabel => switch (paymentStatus) {
+        'paid' => 'Payé',
+        'cancelled' => 'Paiement annulé — aucun encaissement',
+        'reconciliation_required' =>
+          'Paiement reçu — vérification financière nécessaire',
+        'refund_pending' => 'Remboursement en attente',
+        'refunded' => 'Remboursé',
+        _ => paymentMethod == 'cash'
+            ? 'Paiement à la livraison — À encaisser'
+            : (paymentStatus == 'failed'
+                ? 'Paiement échoué'
+                : 'Paiement en attente'),
+      };
 
   factory OrderModel.fromJson(Map<String, dynamic> data) {
     final restaurant = Map<String, dynamic>.from(
@@ -145,7 +167,8 @@ class OrderModel {
       restaurantId: (restaurant['id'] ?? '').toString(),
       items: rawItems
           .whereType<Map>()
-          .map((item) => OrderItemModel.fromJson(Map<String, dynamic>.from(item)))
+          .map((item) =>
+              OrderItemModel.fromJson(Map<String, dynamic>.from(item)))
           .toList(growable: false),
       total: (data['total'] as num?)?.toDouble() ?? 0,
       subtotal: (data['subtotal'] as num?)?.toDouble() ?? 0,
@@ -155,19 +178,33 @@ class OrderModel {
       deliveryZoneName: (deliveryZone['name'] ?? '').toString(),
       status: (data['status'] ?? '').toString(),
       paymentStatus: (data['payment_status'] ?? '').toString(),
+      canRetryPayment: data['can_retry_payment'] == true,
+      canCollectCash: data['can_collect_cash'] == true,
+      cashDue: (data['cash_due'] as num?)?.toDouble() ?? 0,
+      rejectionReason: rawHistory
+              .whereType<Map>()
+              .where((entry) => entry['to_status'] == 'cancelled')
+              .map((entry) =>
+                  (entry['metadata'] as Map?)?['reason']?.toString() ?? '')
+              .where((reason) => reason.isNotEmpty)
+              .firstOrNull ??
+          '',
       timeline: timeline,
       deliveryAddress: [
         address['label'],
         address['address_line'],
         address['city'],
-      ].whereType<String>().where((value) => value.trim().isNotEmpty).join(' • '),
+      ]
+          .whereType<String>()
+          .where((value) => value.trim().isNotEmpty)
+          .join(' • '),
       paymentMethod: (data['payment_method'] ?? '').toString(),
       note: (data['notes'] ?? '').toString(),
       currency: (data['currency'] ?? 'XAF').toString(),
       createdAt: createdAt,
       updatedAt: timeline.isNotEmpty ? timeline.first.timestamp : createdAt,
-      courierName: '',
-      courierPhone: '',
+      courierName: (data['assigned_courier']?['name'] ?? '').toString(),
+      courierPhone: (data['assigned_courier']?['phone'] ?? '').toString(),
       courierVehicle: '',
     );
   }
@@ -175,7 +212,7 @@ class OrderModel {
   bool get isActive =>
       status != 'delivered' &&
       status != 'cancelled' &&
-      status != 'payment_failed';
+      (status != 'payment_failed' || canRetryPayment);
 
   String get displayStatus {
     switch (status) {
@@ -258,9 +295,15 @@ class OrderService extends ChangeNotifier {
 
     notifyListeners();
 
-    return OrderModel.fromJson(
-      Map<String, dynamic>.from((response['data'] as Map?) ?? const {}),
-    );
+    final data =
+        Map<String, dynamic>.from((response['data'] as Map?) ?? const {});
+    if ((data['order_number']?.toString().trim() ?? '').isEmpty) {
+      throw const ApiException(
+          statusCode: 502,
+          message:
+              'Référence de commande non reçue. Vérifiez Mes commandes avant de réessayer.');
+    }
+    return OrderModel.fromJson(data);
   }
 
   Future<List<OrderModel>> fetchOrders({String? scope, String? status}) async {
@@ -343,10 +386,12 @@ class OrderService extends ChangeNotifier {
     );
   }
 
-  Future<List<OrderModel>> fetchRestaurantOrders({String? status}) async {
+  Future<List<OrderModel>> fetchRestaurantOrders(
+      {String? status, int page = 1}) async {
     final response = await _apiClient.getJson(
       '/api/v1/restaurant/orders',
       queryParameters: {
+        'page': '$page',
         if (status != null && status.isNotEmpty) 'status': status,
       },
       headers: await _authHeaders(),
@@ -358,6 +403,13 @@ class OrderService extends ChangeNotifier {
         .whereType<Map>()
         .map((item) => OrderModel.fromJson(Map<String, dynamic>.from(item)))
         .toList(growable: false);
+  }
+
+  Future<void> confirmRestaurantCash(String orderNumber) async {
+    await _apiClient.postJson(
+        '/api/v1/restaurant/orders/$orderNumber/cash-collected',
+        headers: await _authHeaders());
+    notifyListeners();
   }
 
   Future<OrderModel> transitionRestaurantOrder({

@@ -27,9 +27,8 @@ class CartQuoteLineItem {
       unitPrice: (json['unit_price'] as num?)?.toDouble() ?? 0,
       optionsTotal: (json['options_total'] as num?)?.toDouble() ?? 0,
       lineTotal: (json['line_total'] as num?)?.toDouble() ?? 0,
-      selectedOptionValueIds: rawIds
-          .map((value) => (value as num).toInt())
-          .toList(growable: false),
+      selectedOptionValueIds:
+          rawIds.map((value) => (value as num).toInt()).toList(growable: false),
     );
   }
 }
@@ -44,6 +43,7 @@ class CartQuote {
     required this.discountTotal,
     required this.total,
     required this.pricingVersion,
+    this.requiresManualQuote = false,
   });
 
   final int restaurantId;
@@ -54,6 +54,7 @@ class CartQuote {
   final double discountTotal;
   final double total;
   final String pricingVersion;
+  final bool requiresManualQuote;
 
   factory CartQuote.fromJson(Map<String, dynamic> json) {
     final rawItems = (json['items'] as List?) ?? const [];
@@ -63,13 +64,15 @@ class CartQuote {
       currency: (json['currency'] ?? 'XAF').toString(),
       items: rawItems
           .whereType<Map>()
-          .map((item) => CartQuoteLineItem.fromJson(Map<String, dynamic>.from(item)))
+          .map((item) =>
+              CartQuoteLineItem.fromJson(Map<String, dynamic>.from(item)))
           .toList(growable: false),
       subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0,
       deliveryFee: (json['delivery_fee'] as num?)?.toDouble() ?? 0,
       discountTotal: (json['discount_total'] as num?)?.toDouble() ?? 0,
       total: (json['total'] as num?)?.toDouble() ?? 0,
       pricingVersion: (json['pricing_version'] ?? '').toString(),
+      requiresManualQuote: json['requires_manual_quote'] == true,
     );
   }
 }

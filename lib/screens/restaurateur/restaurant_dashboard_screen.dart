@@ -2,16 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../services/restaurant_workspace_service.dart';
+import '../../services/user_auth_service.dart';
+import 'restaurant_orders_screen.dart';
+import 'restaurant_reservations_screen.dart';
 
 class RestaurantDashboardScreen extends StatefulWidget {
-  const RestaurantDashboardScreen({super.key});
+  const RestaurantDashboardScreen({super.key, this.workspace});
+  final RestaurantWorkspaceService? workspace;
 
   @override
-  State<RestaurantDashboardScreen> createState() => _RestaurantDashboardScreenState();
+  State<RestaurantDashboardScreen> createState() =>
+      _RestaurantDashboardScreenState();
 }
 
 class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
+  RestaurantWorkspaceService get _workspace =>
+      widget.workspace ?? RestaurantWorkspaceService.instance;
   Map<String, dynamic>? _dashboard;
+  Map<String, dynamic>? _subscription;
   bool _loading = true;
   String? _error;
 
@@ -27,10 +35,17 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
       _error = null;
     });
     try {
-      final data = await RestaurantWorkspaceService.instance.fetchDashboard();
+      final profile = await _workspace.fetchProfile();
+      final data = profile['status'] == 'active'
+          ? await _workspace.fetchDashboard()
+          : <String, dynamic>{'restaurant': profile};
+      final subscription = profile['status'] == 'active'
+          ? await _workspace.fetchSubscription()
+          : null;
       if (!mounted) return;
       setState(() {
         _dashboard = data;
+        _subscription = subscription;
         _loading = false;
       });
     } catch (_) {
@@ -44,14 +59,30 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final restaurant = Map<String, dynamic>.from((_dashboard?['restaurant'] as Map?) ?? const {});
-    final stats = Map<String, dynamic>.from((_dashboard?['stats'] as Map?) ?? const {});
-    final subscription = Map<String, dynamic>.from((_dashboard?['subscription'] as Map?) ?? const {});
-    final recentOrders = ((_dashboard?['recent_orders'] as List?) ?? const []).whereType<Map>().toList(growable: false);
+    final restaurant = Map<String, dynamic>.from(
+        (_dashboard?['restaurant'] as Map?) ?? const {});
+    final stats =
+        Map<String, dynamic>.from((_dashboard?['stats'] as Map?) ?? const {});
+    final subscription = _subscription;
+    final plan = subscription?['plan'] as Map?;
+    final recentOrders = ((_dashboard?['recent_orders'] as List?) ?? const [])
+        .whereType<Map>()
+        .toList(growable: false);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F5FB),
       appBar: AppBar(
+        actions: [
+          IconButton(
+              tooltip: 'Déconnexion',
+              icon: const Icon(Icons.logout),
+              onPressed: () async {
+                await UserAuthService.instance.signOut();
+                if (context.mounted)
+                  Navigator.pushNamedAndRemoveUntil(
+                      context, '/login', (_) => false);
+              })
+        ],
         backgroundColor: Colors.white,
         elevation: 0,
         title: Text(
@@ -75,10 +106,15 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                   children: [
                     Text(_error!, textAlign: TextAlign.center),
                     const SizedBox(height: 12),
-                    OutlinedButton(onPressed: _load, child: const Text('Réessayer')),
+                    OutlinedButton(
+                        onPressed: _load, child: const Text('Réessayer')),
                   ],
                 ),
               )
+            else if (restaurant['status'] != 'active')
+              _panel(
+                  child: Text(
+                      'Restaurant ${restaurant['status'] ?? 'en attente'}. Les outils de gestion seront accessibles après activation.'))
             else ...[
               _panel(
                 child: Column(
@@ -89,10 +125,12 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                         Expanded(
                           child: Text(
                             restaurant['name']?.toString() ?? 'Restaurant',
-                            style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800),
+                            style: GoogleFonts.inter(
+                                fontSize: 22, fontWeight: FontWeight.w800),
                           ),
                         ),
-                        _statusChip(restaurant['is_open'] == true ? 'Ouvert' : 'Fermé'),
+                        _statusChip(
+                            restaurant['is_open'] == true ? 'Ouvert' : 'Fermé'),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -101,26 +139,71 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                         restaurant['cuisine_type'],
                         restaurant['city'],
                         restaurant['opening_hours'],
-                      ].whereType<String>().where((value) => value.trim().isNotEmpty).join(' • '),
+                      ]
+                          .whereType<String>()
+                          .where((value) => value.trim().isNotEmpty)
+                          .join(' • '),
                       style: GoogleFonts.inter(color: const Color(0xFF6F7390)),
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'Abonnement: ${(subscription['plan'] ?? 'standard').toString().toUpperCase()} • ${subscription['status'] ?? 'pending'}',
+                      subscription == null
+                          ? 'Aucun abonnement associé'
+                          : 'Abonnement : ${plan?['name'] ?? 'Plan indisponible'} • ${subscription['status']}',
                       style: GoogleFonts.inter(fontWeight: FontWeight.w700),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 14),
+              _panel(
+                  child: Column(children: [
+                for (final entry in const [
+                  ('Menus & plats', '/edit-menu'),
+                  ('Informations restaurant', '/edit-restaurant'),
+                  ('Photos & galerie', '/edit-gallery')
+                ])
+                  ListTile(
+                      title: Text(entry.$1),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        await Navigator.pushNamed(context, entry.$2);
+                        if (mounted) _load();
+                      }),
+                ListTile(
+                    title: const Text('Commandes'),
+                    onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const RestaurantOrdersScreen()))),
+                ListTile(
+                    title: const Text('Réservations'),
+                    onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => RestaurantReservationsScreen(
+                                workspace: _workspace)))),
+                const ListTile(
+                    title: Text('Messages, avis et promotions'),
+                    subtitle: Text('Modules de gestion non disponibles')),
+              ])),
+              const SizedBox(height: 14),
               Wrap(
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  _statCard('Commandes du jour', '${stats['orders_today'] ?? 0}'),
-                  _statCard('Commandes actives', '${stats['orders_pending'] ?? 0}'),
-                  _statCard('Réservations', '${stats['reservations_total'] ?? 0}'),
-                  _statCard('CA réel', '${((stats['revenue_today'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)} XAF'),
+                  _statCard(
+                      'Commandes du jour', '${stats['orders_today'] ?? 0}'),
+                  _statCard(
+                      'Commandes actives', '${stats['orders_pending'] ?? 0}'),
+                  _statCard(
+                      'Réservations', '${stats['reservations_total'] ?? 0}'),
+                  _statCard('Note moyenne',
+                      stats['average_rating']?.toString() ?? 'Non disponible'),
+                  _statCard('Nombre d’avis',
+                      stats['reviews_count']?.toString() ?? 'Non disponible'),
+                  _statCard('CA encaissé du jour',
+                      '${((stats['revenue_today'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)} XAF'),
                 ],
               ),
               const SizedBox(height: 14),
@@ -128,12 +211,15 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Commandes récentes', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800)),
+                    Text('Commandes récentes',
+                        style: GoogleFonts.inter(
+                            fontSize: 16, fontWeight: FontWeight.w800)),
                     const SizedBox(height: 12),
                     if (recentOrders.isEmpty)
                       Text(
                         'Aucune commande réelle disponible pour le moment.',
-                        style: GoogleFonts.inter(color: const Color(0xFF6F7390)),
+                        style:
+                            GoogleFonts.inter(color: const Color(0xFF6F7390)),
                       )
                     else
                       ...recentOrders.map((order) => Padding(
@@ -143,12 +229,14 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                                 Expanded(
                                   child: Text(
                                     (order['order_number'] ?? '').toString(),
-                                    style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                                    style: GoogleFonts.inter(
+                                        fontWeight: FontWeight.w700),
                                   ),
                                 ),
                                 Text(
                                   '${((order['total'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)} ${(order['currency'] ?? 'XAF')}',
-                                  style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                                  style: GoogleFonts.inter(
+                                      fontWeight: FontWeight.w700),
                                 ),
                               ],
                             ),
@@ -182,9 +270,13 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: GoogleFonts.inter(color: const Color(0xFF6F7390), fontSize: 12)),
+            Text(label,
+                style: GoogleFonts.inter(
+                    color: const Color(0xFF6F7390), fontSize: 12)),
             const SizedBox(height: 8),
-            Text(value, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800)),
+            Text(value,
+                style: GoogleFonts.inter(
+                    fontSize: 18, fontWeight: FontWeight.w800)),
           ],
         ),
       ),

@@ -434,6 +434,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
               Text(items),
               Text(price),
               Text(status),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/order-tracking',
+                      arguments: orderId);
+                },
+                child: const Text('Détails et paiement'),
+              ),
             ],
           ),
         );

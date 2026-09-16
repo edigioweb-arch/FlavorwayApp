@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import '../../services/city_api_service.dart';
+import '../../models/city_model.dart';
 
-import '../../services/restaurant_service.dart';
+import '../../services/restaurant_workspace_service.dart';
+import '../../services/api_client.dart';
 
 class EditRestaurantScreen extends StatefulWidget {
-  const EditRestaurantScreen({super.key});
+  const EditRestaurantScreen({super.key, this.workspace, this.cityApi});
+  final RestaurantWorkspaceService? workspace;
+  final CityApiService? cityApi;
 
   @override
   State<EditRestaurantScreen> createState() => _EditRestaurantScreenState();
@@ -24,9 +28,16 @@ class _EditRestaurantScreenState extends State<EditRestaurantScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _hoursController = TextEditingController();
   final TextEditingController _timeController = TextEditingController();
-  final TextEditingController _distanceController = TextEditingController();
+  final TextEditingController _deliveryFeeController = TextEditingController();
 
-  bool _isInitialized = false;
+  RestaurantWorkspaceService get _workspace =>
+      widget.workspace ?? RestaurantWorkspaceService.instance;
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
+  List<CityModel> _cities = [];
+  String? _cityId;
+  String _deliveryMode = 'flavorway';
   bool _isOpen = true;
 
   final List<String> availableServices = const [
@@ -48,69 +59,103 @@ class _EditRestaurantScreenState extends State<EditRestaurantScreen> {
     _phoneController.dispose();
     _hoursController.dispose();
     _timeController.dispose();
-    _distanceController.dispose();
+    _deliveryFeeController.dispose();
     super.dispose();
   }
 
-  void _initFields(RestaurantData restaurant) {
-    if (_isInitialized) return;
-
-    _nameController.text = restaurant.name;
-    _typeController.text = restaurant.type;
-    _descriptionController.text = restaurant.description;
-    _addressController.text = restaurant.address;
-    _phoneController.text = restaurant.phone;
-    _hoursController.text = restaurant.openingHours;
-    _timeController.text = restaurant.preparationTime;
-    _distanceController.text = restaurant.distance;
-    _isOpen = restaurant.isOpen;
-    selectedServices.addAll(restaurant.services);
-
-    _isInitialized = true;
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
 
-  void _saveRestaurant(RestaurantService service) {
-    service.updateRestaurantInfo(
-      restaurantId: 'joli_coin',
-      name: _nameController.text.trim(),
-      type: _typeController.text.trim(),
-      description: _descriptionController.text.trim(),
-      address: _addressController.text.trim(),
-      phone: _phoneController.text.trim(),
-      openingHours: _hoursController.text.trim(),
-      preparationTime: _timeController.text.trim(),
-      distance: _distanceController.text.trim(),
-      isOpen: _isOpen,
-    );
-
-    final restaurant = service.joliCoin;
-    for (final item in availableServices) {
-      final exists = restaurant.services.contains(item);
-      final shouldExist = selectedServices.contains(item);
-
-      if (exists != shouldExist) {
-        service.toggleService(
-          restaurantId: 'joli_coin',
-          service: item,
-        );
-      }
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final profile = await _workspace.fetchProfile();
+      final cities = await (widget.cityApi ?? CityApiService()).fetchCities();
+      if (!mounted) return;
+      _nameController.text = profile['name'] ?? '';
+      _typeController.text = profile['cuisine_type'] ?? '';
+      _descriptionController.text = profile['description'] ?? '';
+      _addressController.text = profile['address'] ?? '';
+      _phoneController.text = profile['phone'] ?? '';
+      _hoursController.text = profile['opening_hours'] ?? '';
+      _timeController.text = profile['preparation_time'] ?? '';
+      _deliveryFeeController.text =
+          (profile['restaurant_delivery_fee'] ?? '').toString();
+      _deliveryMode = profile['delivery_mode'] ?? 'flavorway';
+      _isOpen = profile['is_open'] == true;
+      _cities = cities;
+      final cityId = profile['city_id']?.toString();
+      _cityId = cities.any((city) => city.id == cityId) ? cityId : null;
+      selectedServices.clear();
+      selectedServices
+          .addAll((profile['services'] as List? ?? []).cast<String>());
+    } catch (_) {
+      _error = 'Impossible de charger votre restaurant.';
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
+  }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Informations restaurant mises à jour')),
-    );
-
-    Navigator.pop(context);
+  Future<void> _saveRestaurant() async {
+    if (_nameController.text.trim().isEmpty || _cityId == null) {
+      setState(() => _error = 'Renseignez le nom et la ville.');
+      return;
+    }
+    if (_deliveryMode == 'restaurant' &&
+        double.tryParse(_deliveryFeeController.text.replaceAll(',', '.')) ==
+            null) {
+      setState(() => _error = 'Renseignez un tarif de livraison valide.');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await _workspace.updateProfile({
+        'name': _nameController.text.trim(),
+        'cuisine_type': _typeController.text.trim(),
+        'description': _descriptionController.text.trim(),
+        'address': _addressController.text.trim(),
+        'phone': _phoneController.text.trim(),
+        'opening_hours': _hoursController.text.trim(),
+        'preparation_time': _timeController.text.trim(),
+        'is_open': _isOpen,
+        'city_id': int.parse(_cityId!),
+        'delivery_mode': _deliveryMode,
+        'restaurant_delivery_fee':
+            double.tryParse(_deliveryFeeController.text.replaceAll(',', '.')),
+        'services': selectedServices.toList(),
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Informations enregistrées.')));
+      Navigator.pop(context, true);
+    } catch (error) {
+      if (mounted)
+        setState(() => _error = error is ApiException
+            ? error.message
+            : 'Enregistrement impossible. Réessayez.');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<RestaurantService>(
-      builder: (context, restaurantService, child) {
-        final restaurant = restaurantService.joliCoin;
-        _initFields(restaurant);
-
-        return Scaffold(
+    if (_loading)
+      return Scaffold(
+          appBar: AppBar(title: const Text('Mon restaurant')),
+          body: const Center(child: CircularProgressIndicator()));
+    return AbsorbPointer(
+        absorbing: _saving,
+        child: Scaffold(
           backgroundColor: softBg,
           body: SafeArea(
             child: Column(
@@ -123,6 +168,12 @@ class _EditRestaurantScreenState extends State<EditRestaurantScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (_error != null)
+                          Text(_error!,
+                              style: const TextStyle(color: Colors.red)),
+                        TextButton(
+                            onPressed: _load,
+                            child: const Text('Recharger les informations')),
                         _sectionTitle('Informations principales'),
                         const SizedBox(height: 14),
                         _inputField(
@@ -165,11 +216,35 @@ class _EditRestaurantScreenState extends State<EditRestaurantScreen> {
                           label: 'Temps estimé',
                           icon: Icons.timer_rounded,
                         ),
-                        _inputField(
-                          controller: _distanceController,
-                          label: 'Zone / distance',
-                          icon: Icons.map_rounded,
-                        ),
+                        DropdownButtonFormField<String>(
+                            value: _cityId,
+                            decoration:
+                                const InputDecoration(labelText: 'Ville'),
+                            items: _cities
+                                .map((city) => DropdownMenuItem(
+                                    value: city.id, child: Text(city.name)))
+                                .toList(),
+                            onChanged: (value) =>
+                                setState(() => _cityId = value)),
+                        DropdownButtonFormField<String>(
+                            value: _deliveryMode,
+                            decoration:
+                                const InputDecoration(labelText: 'Livraison'),
+                            items: const [
+                              DropdownMenuItem(
+                                  value: 'flavorway', child: Text('FlavorWay')),
+                              DropdownMenuItem(
+                                  value: 'restaurant',
+                                  child: Text('Restaurant'))
+                            ],
+                            onChanged: (value) =>
+                                setState(() => _deliveryMode = value!)),
+                        if (_deliveryMode == 'restaurant')
+                          _inputField(
+                              controller: _deliveryFeeController,
+                              label: 'Tarif livraison restaurant (XAF)',
+                              icon: Icons.delivery_dining,
+                              keyboardType: TextInputType.number),
                         const SizedBox(height: 12),
                         _sectionTitle('Statut'),
                         const SizedBox(height: 14),
@@ -183,7 +258,7 @@ class _EditRestaurantScreenState extends State<EditRestaurantScreen> {
                           width: double.infinity,
                           height: 58,
                           child: ElevatedButton(
-                            onPressed: () => _saveRestaurant(restaurantService),
+                            onPressed: _saving ? null : _saveRestaurant,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: orangeFlavor,
                               elevation: 0,
@@ -209,9 +284,7 @@ class _EditRestaurantScreenState extends State<EditRestaurantScreen> {
               ],
             ),
           ),
-        );
-      },
-    );
+        ));
   }
 
   Widget _buildHeader() {

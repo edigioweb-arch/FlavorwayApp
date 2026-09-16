@@ -10,7 +10,8 @@ class RestaurantWorkspaceService {
   })  : _apiClient = apiClient ?? ApiClient(),
         _auth = auth ?? FirebaseAuth.instance;
 
-  static final RestaurantWorkspaceService instance = RestaurantWorkspaceService();
+  static final RestaurantWorkspaceService instance =
+      RestaurantWorkspaceService();
 
   final ApiClient _apiClient;
   final FirebaseAuth _auth;
@@ -21,6 +22,73 @@ class RestaurantWorkspaceService {
       if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
       'Accept': 'application/json',
     };
+  }
+
+  Future<Map<String, dynamic>?> fetchSubscription() async {
+    final result = await _apiClient.getJson('/api/v1/restaurant/subscription',
+        headers: await _headers());
+    return result['data'] is Map
+        ? Map<String, dynamic>.from(result['data'])
+        : null;
+  }
+
+  Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> data) async {
+    final result = await _apiClient.postJson('/api/v1/restaurant/profile',
+        body: data, headers: await _headers());
+    return Map<String, dynamic>.from(result['data']);
+  }
+
+  Future<Map<String, dynamic>> fetchCatalog() async {
+    final result = await _apiClient.getJson('/api/v1/restaurant/catalog',
+        headers: await _headers());
+    return Map<String, dynamic>.from(result['data']);
+  }
+
+  Future<Map<String, dynamic>> saveProduct(Map<String, dynamic> data,
+      {int? id, http.MultipartFile? image}) async {
+    final path = id == null
+        ? '/api/v1/restaurant/products'
+        : '/api/v1/restaurant/products/$id';
+    final result = image == null
+        ? await _apiClient.postJson(path, body: data, headers: await _headers())
+        : await _apiClient.postMultipart(path,
+            fields: _formFields(data),
+            files: [image],
+            headers: await _headers());
+    return Map<String, dynamic>.from(result['data']);
+  }
+
+  Map<String, String> _formFields(Map<String, dynamic> data) {
+    final fields = <String, String>{};
+    void add(String key, dynamic value) {
+      if (value is Map) {
+        value.forEach((k, v) => add('$key[$k]', v));
+      } else if (value is List) {
+        for (var i = 0; i < value.length; i++) {
+          add('$key[$i]', value[i]);
+        }
+      } else {
+        fields[key] =
+            value is bool ? (value ? '1' : '0') : value?.toString() ?? '';
+      }
+    }
+
+    data.forEach(add);
+    return fields;
+  }
+
+  Future<Map<String, dynamic>> fetchReservations({int page = 1}) async =>
+      _apiClient.getJson('/api/v1/restaurant/reservations',
+          queryParameters: {'page': '$page'}, headers: await _headers());
+
+  Future<Map<String, dynamic>> reservationAction(
+      String reference, String action,
+      {String? reason}) async {
+    final result = await _apiClient.postJson(
+        '/api/v1/restaurant/reservations/$reference/$action',
+        body: {if (reason != null) 'reason': reason},
+        headers: await _headers());
+    return Map<String, dynamic>.from(result['data']);
   }
 
   Future<Map<String, dynamic>> fetchDashboard() async {

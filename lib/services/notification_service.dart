@@ -43,7 +43,8 @@ class NotificationService extends ChangeNotifier {
 
   bool get notificationsEnabled => _notificationsEnabled;
   String get selectedMessageSound => _selectedMessageSound;
-  List<AppNotificationModel> get notifications => List.unmodifiable(_notifications);
+  List<AppNotificationModel> get notifications =>
+      List.unmodifiable(_notifications);
   int get unreadCount => _unreadCount;
 
   void _debugLog(String message) {
@@ -123,12 +124,12 @@ class NotificationService extends ChangeNotifier {
     _notifications
       ..clear()
       ..addAll(
-        data
-            .whereType<Map>()
-            .map((item) => AppNotificationModel.fromJson(Map<String, dynamic>.from(item))),
+        data.whereType<Map>().map((item) =>
+            AppNotificationModel.fromJson(Map<String, dynamic>.from(item))),
       );
 
-    final meta = Map<String, dynamic>.from((response['meta'] as Map?) ?? const {});
+    final meta =
+        Map<String, dynamic>.from((response['meta'] as Map?) ?? const {});
     _unreadCount = (meta['unread_count'] as num?)?.toInt() ??
         _notifications.where((item) => !item.isRead).length;
 
@@ -165,7 +166,8 @@ class NotificationService extends ChangeNotifier {
   }
 
   Future<void> registerCurrentDeviceToken({String? tokenOverride}) async {
-    final token = tokenOverride ?? _currentDeviceToken ?? await _messaging.getToken();
+    final token =
+        tokenOverride ?? _currentDeviceToken ?? await _messaging.getToken();
     if (token == null || token.isEmpty) return;
 
     await _apiClient.postJson(
@@ -279,6 +281,10 @@ class NotificationService extends ChangeNotifier {
     required bool navigate,
     required bool showBanner,
   }) async {
+    if (navigate) {
+      NotificationNavigationService.instance
+          .handlePayload(Map<String, dynamic>.from(message.data));
+    }
     final parsed = _mapRemoteMessage(message);
 
     if (parsed == null) {
@@ -292,13 +298,10 @@ class NotificationService extends ChangeNotifier {
     notifyListeners();
 
     if (showBanner && _notificationsEnabled) {
-      NotificationNavigationService.instance
-          .showForegroundBanner(parsed.title, parsed.body);
+      NotificationNavigationService.instance.showForegroundBanner(
+          parsed.title, parsed.body,
+          payload: parsed.data);
       await _playSelectedSound();
-    }
-
-    if (navigate) {
-      NotificationNavigationService.instance.handlePayload(parsed.data);
     }
   }
 

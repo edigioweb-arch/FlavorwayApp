@@ -6,6 +6,7 @@ import '../widgets/auth_gate.dart';
 import 'email_verification_screen.dart';
 import 'home_screen.dart';
 import 'restaurant_owner/restaurant_dashboard_screen.dart';
+import 'signup_screen.dart';
 import 'welcome_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -32,7 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login() async {
     final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+    final password = _passwordController.text;
 
     if (kDebugMode) {
       // ignore: avoid_print
@@ -110,7 +111,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
           if (kDebugMode) {
             // ignore: avoid_print
-            print('--- LoginScreen: redirection vers /restaurant-dashboard ---');
+            print(
+                '--- LoginScreen: redirection vers /restaurant-dashboard ---');
           }
 
           return;
@@ -328,20 +330,43 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildSignUpText() {
     return Center(
-      child: GestureDetector(
-        onTap: () => Navigator.pushNamed(context, '/signup'),
-        child: RichText(
-          text: TextSpan(
-            text: "Pas de compte ? ",
-            style: const TextStyle(color: Colors.white70),
-            children: [
-              TextSpan(
-                  text: 'Inscrivez-vous',
-                  style: TextStyle(
-                      color: orangeFlavor, fontWeight: FontWeight.bold)),
-            ],
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.pushNamed(context, '/signup'),
+            child: RichText(
+              text: TextSpan(
+                text: "Pas de compte ? ",
+                style: const TextStyle(color: Colors.white70),
+                children: [
+                  TextSpan(
+                      text: 'Inscrivez-vous',
+                      style: TextStyle(
+                          color: orangeFlavor, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
           ),
-        ),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const SignUpScreen(initialRole: 'restaurant'),
+                ),
+              );
+            },
+            child: Text(
+              'Créer un compte restaurateur',
+              style: GoogleFonts.poppins(
+                color: Colors.white70,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

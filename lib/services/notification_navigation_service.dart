@@ -2,64 +2,79 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class NotificationNavigationService {
-  NotificationNavigationService._();
+  NotificationNavigationService();
 
   static final NotificationNavigationService instance =
-      NotificationNavigationService._();
-
+      NotificationNavigationService();
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  Map<String, dynamic>? _pendingPayload;
 
-  void showForegroundBanner(String title, String body) {
+  void showForegroundBanner(String title, String body,
+      {Map<String, dynamic>? payload}) {
     final context = navigatorKey.currentContext;
     if (context == null) return;
-
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            '$title\n$body',
-            style: GoogleFonts.poppins(),
-          ),
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      ..showSnackBar(SnackBar(
+        content: Text('$title\n$body', style: GoogleFonts.poppins()),
+        action: payload == null
+            ? null
+            : SnackBarAction(
+                label: 'Ouvrir', onPressed: () => handlePayload(payload)),
+        duration: const Duration(seconds: 6),
+      ));
+  }
+
+  // getInitialMessage can arrive before runApp. Keep it until the navigator
+  // exists; no order is created or inferred from the notification.
+  void flushPendingPayload() {
+    final pending = _pendingPayload;
+    if (pending == null || navigatorKey.currentState == null) return;
+    _pendingPayload = null;
+    handlePayload(pending);
   }
 
   void handlePayload(Map<String, dynamic> payload) {
     final navigator = navigatorKey.currentState;
-    if (navigator == null) return;
-
-    final type = (payload['type'] ?? '').toString();
-    final route = (payload['route'] ?? '').toString();
-    final entityType = (payload['entity_type'] ?? '').toString();
-    final entityId = (payload['entity_id'] ?? '').toString();
-    final orderId = (payload['order_id'] ?? '').toString();
-    final orderNumber = (payload['order_number'] ?? '').toString();
-
-    if (route == 'order_detail' || type.startsWith('order_') || entityType == 'order') {
-      final orderReference = orderNumber.isNotEmpty ? orderNumber : orderId;
-      navigator.pushNamed(
-        '/order-tracking',
-        arguments: {
-          'order_reference': orderReference,
-          'order_id': entityId.isNotEmpty ? entityId : orderId,
-          'order_number': orderNumber,
-        },
-      );
+    if (navigator == null) {
+      _pendingPayload = Map<String, dynamic>.from(payload);
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => flushPendingPayload());
       return;
     }
-
+    final type = (payload['type'] ?? '').toString();
+    final route = payload['route'];
+    final destination = payload['destination'];
+    if (destination != null && destination != 'client') {
+      navigator.pushNamed('/notifications');
+      return;
+    }
+    if (route == 'order_detail' ||
+        type.startsWith('order_') ||
+        payload['entity_type'] == 'order') {
+      final number = payload['order_number'];
+      // The Laravel route binds order_number, never an invented/local ID.
+      if (number is! String ||
+          number.trim().isEmpty ||
+          !RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(number)) {
+        navigator.pushNamed('/notifications');
+        return;
+      }
+      navigator.pushNamed('/order-tracking', arguments: {
+        'order_reference': number,
+        'order_id': (payload['order_id'] ?? '').toString(),
+        'order_number': number,
+      });
+      return;
+    }
     if (route == 'reservation_detail' || type.startsWith('reservation_')) {
       navigator.pushNamed('/reservations');
       return;
     }
-
     if (type == 'message') {
       navigator.pushNamed('/messages');
       return;
     }
-
     navigator.pushNamed('/notifications');
   }
 }

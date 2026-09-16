@@ -6,7 +6,9 @@ import 'package:image_picker/image_picker.dart';
 import '../../services/restaurant_workspace_service.dart';
 
 class EditGalleryScreen extends StatefulWidget {
-  const EditGalleryScreen({super.key});
+  const EditGalleryScreen({super.key, this.workspace, this.picker});
+  final ImagePicker? picker;
+  final RestaurantWorkspaceService? workspace;
 
   @override
   State<EditGalleryScreen> createState() => _EditGalleryScreenState();
@@ -17,7 +19,9 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
   static const Color violetFlavor = Color(0xFF4B1F5C);
   static const Color background = Color(0xFFFAF8F6);
 
-  final ImagePicker _picker = ImagePicker();
+  RestaurantWorkspaceService get _workspace =>
+      widget.workspace ?? RestaurantWorkspaceService.instance;
+  late final ImagePicker _picker = widget.picker ?? ImagePicker();
   Map<String, dynamic>? _gallery;
   bool _loading = true;
   bool _uploading = false;
@@ -36,7 +40,7 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
     });
 
     try {
-      final data = await RestaurantWorkspaceService.instance.fetchGallery();
+      final data = await _workspace.fetchGallery();
       if (!mounted) return;
       setState(() {
         _gallery = data;
@@ -52,17 +56,17 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
   }
 
   Future<void> _uploadImages() async {
-    final files = await _picker.pickMultiImage(imageQuality: 85);
-    if (files.isEmpty) return;
-
+    if (_uploading) return;
     setState(() => _uploading = true);
-
     try {
+      final files = await _picker.pickMultiImage(imageQuality: 85);
+      if (!mounted || files.isEmpty) return;
       final multipartFiles = await Future.wait(
-        files.map((file) => http.MultipartFile.fromPath('gallery[]', file.path)),
+        files
+            .map((file) => http.MultipartFile.fromPath('gallery[]', file.path)),
       );
 
-      final data = await RestaurantWorkspaceService.instance.uploadGallery(
+      final data = await _workspace.uploadGallery(
         galleryFiles: multipartFiles,
       );
 
@@ -74,7 +78,8 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+        SnackBar(
+            content: Text(error.toString().replaceFirst('Exception: ', ''))),
       );
     } finally {
       if (mounted) {
@@ -86,7 +91,7 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
   Future<void> _deleteImage(String path) async {
     setState(() => _uploading = true);
     try {
-      final data = await RestaurantWorkspaceService.instance.deleteGalleryImage(path);
+      final data = await _workspace.deleteGalleryImage(path);
       if (!mounted) return;
       setState(() => _gallery = data);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -95,7 +100,8 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+        SnackBar(
+            content: Text(error.toString().replaceFirst('Exception: ', ''))),
       );
     } finally {
       if (mounted) {
@@ -141,7 +147,8 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
                   children: [
                     Text(_error!, textAlign: TextAlign.center),
                     const SizedBox(height: 12),
-                    OutlinedButton(onPressed: _load, child: const Text('Réessayer')),
+                    OutlinedButton(
+                        onPressed: _load, child: const Text('Réessayer')),
                   ],
                 ),
               )
@@ -152,12 +159,14 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
                   children: [
                     Text(
                       'Visuels du restaurant',
-                      style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800),
+                      style: GoogleFonts.inter(
+                          fontSize: 18, fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Ajoutez ici les photos réelles du restaurant et des plats visibles dans l’application.',
-                      style: GoogleFonts.inter(color: const Color(0xFF6F7390), height: 1.5),
+                      style: GoogleFonts.inter(
+                          color: const Color(0xFF6F7390), height: 1.5),
                     ),
                     const SizedBox(height: 16),
                     Wrap(
@@ -165,9 +174,13 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
                       runSpacing: 12,
                       children: [
                         if ((_gallery?['logo_url'] ?? '').toString().isNotEmpty)
-                          _mediaCard((_gallery?['logo_url'] ?? '').toString(), 'Logo actuel'),
-                        if ((_gallery?['cover_url'] ?? '').toString().isNotEmpty)
-                          _mediaCard((_gallery?['cover_url'] ?? '').toString(), 'Couverture'),
+                          _mediaCard((_gallery?['logo_url'] ?? '').toString(),
+                              'Logo actuel'),
+                        if ((_gallery?['cover_url'] ?? '')
+                            .toString()
+                            .isNotEmpty)
+                          _mediaCard((_gallery?['cover_url'] ?? '').toString(),
+                              'Couverture'),
                       ],
                     ),
                   ],
@@ -183,7 +196,8 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
                         Expanded(
                           child: Text(
                             'Galerie plats & restaurant',
-                            style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800),
+                            style: GoogleFonts.inter(
+                                fontSize: 16, fontWeight: FontWeight.w800),
                           ),
                         ),
                         ElevatedButton.icon(
@@ -196,10 +210,12 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white),
                                 )
                               : const Icon(Icons.add_photo_alternate_outlined),
-                          label: Text(_uploading ? 'Envoi...' : 'Ajouter des photos'),
+                          label: Text(
+                              _uploading ? 'Envoi...' : 'Ajouter des photos'),
                         ),
                       ],
                     ),
@@ -207,14 +223,16 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
                     if (galleryItems.isEmpty)
                       Text(
                         'Aucune photo réelle enregistrée pour le moment.',
-                        style: GoogleFonts.inter(color: const Color(0xFF6F7390)),
+                        style:
+                            GoogleFonts.inter(color: const Color(0xFF6F7390)),
                       )
                     else
                       GridView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         itemCount: galleryItems.length,
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 2,
                           crossAxisSpacing: 12,
                           mainAxisSpacing: 12,
@@ -229,7 +247,8 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: const Color(0xFFECE6F6)),
+                              border:
+                                  Border.all(color: const Color(0xFFECE6F6)),
                             ),
                             child: Stack(
                               children: [
@@ -239,7 +258,10 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
                                     child: Image.network(
                                       url,
                                       fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined)),
+                                      errorBuilder: (_, __, ___) =>
+                                          const Center(
+                                              child: Icon(
+                                                  Icons.broken_image_outlined)),
                                     ),
                                   ),
                                 ),
@@ -247,14 +269,17 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
                                   top: 10,
                                   right: 10,
                                   child: InkWell(
-                                    onTap: _uploading ? null : () => _deleteImage(path),
+                                    onTap: _uploading
+                                        ? null
+                                        : () => _deleteImage(path),
                                     child: Container(
                                       padding: const EdgeInsets.all(7),
                                       decoration: BoxDecoration(
                                         color: Colors.white.withOpacity(0.92),
                                         shape: BoxShape.circle,
                                       ),
-                                      child: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                                      child: const Icon(Icons.delete_outline,
+                                          color: Colors.redAccent, size: 18),
                                     ),
                                   ),
                                 ),
@@ -291,7 +316,9 @@ class _EditGalleryScreenState extends State<EditGalleryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700)),
+          Text(label,
+              style:
+                  GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(14),

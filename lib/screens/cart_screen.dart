@@ -16,33 +16,6 @@ class _CartScreenState extends State<CartScreen> {
   static const Color orangeFlavor = Color(0xFFF36A2D);
   static const Color violetFlavor = Color(0xFF4B1F5C);
 
-  String? _lastQuotedFingerprint;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _ensureQuote();
-  }
-
-  void _ensureQuote() {
-    final cart = context.read<CartService>();
-    if (cart.items.isEmpty) {
-      _lastQuotedFingerprint = null;
-      return;
-    }
-
-    if (_lastQuotedFingerprint == cart.cartFingerprint &&
-        cart.quoteStatus != CartQuoteStatus.quoteError) {
-      return;
-    }
-
-    _lastQuotedFingerprint = cart.cartFingerprint;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      context.read<CartService>().refreshQuote();
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -84,7 +57,6 @@ class _CartScreenState extends State<CartScreen> {
                 child: RefreshIndicator(
                   onRefresh: () async {
                     await cart.refreshQuote();
-                    _lastQuotedFingerprint = cart.cartFingerprint;
                   },
                   child: ListView.builder(
                     padding: const EdgeInsets.all(20),
@@ -225,7 +197,9 @@ class _CartScreenState extends State<CartScreen> {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  '${item.price.toStringAsFixed(0)} ${item.currencyCode}',
+                  cart.quotedLine(item) != null
+                      ? '${(cart.quotedLine(item)!.unitPrice + cart.quotedLine(item)!.optionsTotal).toStringAsFixed(0)} ${cart.displayCurrency}'
+                      : '${item.price.toStringAsFixed(0)} ${item.currencyCode} (estimé)',
                   style: GoogleFonts.poppins(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -309,7 +283,7 @@ class _CartScreenState extends State<CartScreen> {
 
   Widget _buildCheckoutBar(BuildContext context, CartService cart) {
     final isLoading = cart.quoteStatus == CartQuoteStatus.loadingQuote;
-    final canProceed = cart.hasValidQuote && !isLoading;
+    final canProceed = cart.items.isNotEmpty;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(25, 25, 25, 35),
@@ -327,14 +301,16 @@ class _CartScreenState extends State<CartScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           _priceRow(
-            'Sous-total',
+            cart.hasValidQuote ? 'Sous-total' : 'Articles (estimation)',
             '${cart.displaySubtotal.toStringAsFixed(0)} ${cart.displayCurrency}',
             isBold: false,
           ),
           const SizedBox(height: 10),
           _priceRow(
             'Livraison',
-            '${cart.displayDeliveryFee.toStringAsFixed(0)} ${cart.displayCurrency}',
+            cart.hasValidQuote
+                ? '${cart.displayDeliveryFee.toStringAsFixed(0)} ${cart.displayCurrency}'
+                : 'Après adresse',
             isBold: false,
           ),
           if (cart.displayDiscount > 0) ...[
@@ -350,7 +326,9 @@ class _CartScreenState extends State<CartScreen> {
               padding: EdgeInsets.symmetric(vertical: 15), child: Divider()),
           _priceRow(
             'TOTAL',
-            '${cart.displayTotal.toStringAsFixed(0)} ${cart.displayCurrency}',
+            cart.hasValidQuote
+                ? '${cart.displayTotal.toStringAsFixed(0)} ${cart.displayCurrency}'
+                : 'À calculer',
             isBold: true,
             color: orangeFlavor,
           ),
@@ -361,7 +339,7 @@ class _CartScreenState extends State<CartScreen> {
               child: Text(
                 isLoading
                     ? 'Vérification du montant en cours...'
-                    : 'Impossible de vérifier le montant de votre commande. Réessayez.',
+                    : 'Choisissez votre adresse pour obtenir le montant serveur.',
                 style: GoogleFonts.poppins(
                   fontSize: 12,
                   color: isLoading ? violetFlavor : Colors.redAccent,
@@ -392,7 +370,7 @@ class _CartScreenState extends State<CartScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : Text('Confirmer la commande',
+                  : Text('Choisir l’adresse de livraison',
                       style: GoogleFonts.poppins(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -409,16 +387,19 @@ class _CartScreenState extends State<CartScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label,
-            style: GoogleFonts.poppins(
-                fontSize: isBold ? 18 : 14,
-                fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-                color: isBold ? Colors.black87 : Colors.grey)),
-        Text(value,
-            style: GoogleFonts.poppins(
-                fontSize: isBold ? 20 : 14,
-                fontWeight: FontWeight.bold,
-                color: color ?? Colors.black87)),
+        Expanded(
+            child: Text(label,
+                style: GoogleFonts.poppins(
+                    fontSize: isBold ? 18 : 14,
+                    fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+                    color: isBold ? Colors.black87 : Colors.grey))),
+        Flexible(
+            child: Text(value,
+                textAlign: TextAlign.end,
+                style: GoogleFonts.poppins(
+                    fontSize: isBold ? 20 : 14,
+                    fontWeight: FontWeight.bold,
+                    color: color ?? Colors.black87))),
       ],
     );
   }

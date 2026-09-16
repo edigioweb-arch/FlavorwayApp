@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../services/laravel_sync_service.dart';
 import '../../services/user_auth_service.dart';
+import '../../services/restaurant_workspace_service.dart';
 
 class RestaurantOwnerLoginScreen extends StatefulWidget {
   const RestaurantOwnerLoginScreen({super.key});
@@ -51,56 +52,17 @@ class _RestaurantOwnerLoginScreenState
 
       if (!mounted) return;
 
-      // Vérification du rôle restaurant_owner dans Firestore
-      final user = UserAuthService.instance.currentUser;
-      if (user != null) {
-        final profile =
-            await UserAuthService.instance.getUserProfile(uid: user.uid);
-        final data = profile.data();
-
-        final role = (data?['role'] as String?)?.trim().toLowerCase();
-        final status = (data?['status'] as String?)?.trim().toLowerCase();
-
-        if (role == 'restaurant_owner' || role == 'restaurant') {
-          if (status == 'suspended' ||
-              status == 'inactive' ||
-              status == 'blocked' ||
-              status == 'disabled') {
-            await UserAuthService.instance.signOut();
-            if (!mounted) return;
-            _showError(
-              'Ce compte restaurateur n’est pas autorisé à se connecter actuellement.',
-            );
-            return;
-          }
-
-          await LaravelSyncService.instance.syncCurrentRestaurantOwner();
-
-          if (!mounted) return;
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Votre demande restaurateur est en attente de validation.',
-              ),
-            ),
-          );
-
-          // Bon rôle → redirection vers le dashboard
-          // AuthGate gère déjà la connexion, mais on force la route
-          // car le dashboard restaurateur n'est pas AuthGate
-          Navigator.pushReplacementNamed(context, '/restaurant-dashboard');
-          return;
-        }
-
-        // Mauvais rôle ou pas de rôle → déconnexion
-        await UserAuthService.instance.signOut();
-        if (!mounted) return;
-        _showError(
-          'Ce compte n\'est pas un compte restaurateur. '
-          'Utilisez l\'écran de connexion client.',
-        );
+      await LaravelSyncService.instance.syncCurrentRestaurantOwner();
+      final restaurant =
+          await RestaurantWorkspaceService.instance.fetchProfile();
+      if (!mounted) return;
+      if (restaurant['status'] == 'pending') {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:
+              Text('Votre demande restaurateur est en attente de validation.'),
+        ));
       }
+      Navigator.pushReplacementNamed(context, '/restaurant-dashboard');
     } on LaravelSyncException catch (e) {
       await UserAuthService.instance.signOut();
       if (!mounted) return;

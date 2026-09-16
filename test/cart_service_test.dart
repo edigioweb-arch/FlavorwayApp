@@ -64,7 +64,10 @@ void main() {
     );
 
     service.addItem(buildItem());
-    final success = await service.refreshQuote(paymentMethod: 'cash');
+    final success = await service.refreshQuote(
+        paymentMethod: 'cash',
+        deliveryCityId: '1',
+        deliveryAddressLine: 'Adresse test');
 
     expect(success, isTrue);
     expect(service.hasValidQuote, isTrue);
@@ -79,7 +82,10 @@ void main() {
     );
 
     service.addItem(buildItem());
-    final success = await service.refreshQuote(paymentMethod: 'cash');
+    final success = await service.refreshQuote(
+        paymentMethod: 'cash',
+        deliveryCityId: '1',
+        deliveryAddressLine: 'Adresse test');
 
     expect(success, isFalse);
     expect(service.hasValidQuote, isFalse);

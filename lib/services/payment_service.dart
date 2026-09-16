@@ -31,9 +31,16 @@ class PaymentService {
       headers: await _authHeaders(),
     );
 
-    return PaymentModel.fromJson(
+    final payment = PaymentModel.fromJson(
       Map<String, dynamic>.from((response['data'] as Map?) ?? const {}),
     );
+    if (payment.orderNumber != orderNumber ||
+        payment.internalReference.isEmpty) {
+      throw const ApiException(
+          statusCode: 502,
+          message: 'Réponse de paiement incohérente. Actualisez la commande.');
+    }
+    return payment;
   }
 
   Future<PaymentModel?> fetchPaymentStatus(String orderNumber) async {

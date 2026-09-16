@@ -56,7 +56,8 @@ void main() async {
           ChangeNotifierProvider(create: (_) => CartService()),
           ChangeNotifierProvider(create: (_) => CityService()),
           ChangeNotifierProvider(create: (_) => RestaurantService()),
-          ChangeNotifierProvider(create: (_) => RestaurantSubscriptionService()),
+          ChangeNotifierProvider(
+              create: (_) => RestaurantSubscriptionService()),
           ChangeNotifierProvider(create: (_) => MessageService()),
           ChangeNotifierProvider.value(value: NotificationService.instance),
           ChangeNotifierProvider.value(value: LocaleService.instance),
@@ -75,6 +76,11 @@ class FlavorWayApp extends StatelessWidget {
     return Consumer<LocaleService>(
       builder: (context, localeService, child) {
         return MaterialApp(
+          builder: (context, child) {
+            WidgetsBinding.instance.addPostFrameCallback((_) =>
+                NotificationNavigationService.instance.flushPendingPayload());
+            return child ?? const SizedBox.shrink();
+          },
           title: 'FlavorWay',
           debugShowCheckedModeBanner: false,
           navigatorKey: NotificationNavigationService.instance.navigatorKey,
@@ -119,12 +125,11 @@ class FlavorWayApp extends StatelessWidget {
               if (rawArguments is String) {
                 orderReference = rawArguments;
               } else if (rawArguments is Map) {
-                orderReference =
-                    (rawArguments['order_reference'] ??
-                            rawArguments['order_number'] ??
-                            rawArguments['order_id'] ??
-                            '')
-                        .toString();
+                orderReference = (rawArguments['order_reference'] ??
+                        rawArguments['order_number'] ??
+                        rawArguments['order_id'] ??
+                        '')
+                    .toString();
               }
 
               return OrderTrackingScreen(orderReference: orderReference);

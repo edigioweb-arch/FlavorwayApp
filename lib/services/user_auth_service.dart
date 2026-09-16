@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'laravel_sync_service.dart';
 import 'notification_service.dart';
+import 'login_identifier_service.dart';
+import 'api_client.dart';
 
 /// Service d'authentification utilisant Firebase Authentication et Firestore.
 class UserAuthService extends ChangeNotifier {
@@ -34,11 +36,13 @@ class UserAuthService extends ChangeNotifier {
   }) async {
     try {
       return await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
+        email: await LoginIdentifierService().resolve(email, password),
         password: password,
       );
     } on FirebaseAuthException catch (e) {
       throw _convertAuthException(e);
+    } on ApiException catch (e) {
+      throw UserAuthException(message: e.message);
     } catch (e) {
       throw UserAuthException(
         message: 'Impossible de se connecter. Vérifiez votre connexion réseau.',
@@ -46,7 +50,7 @@ class UserAuthService extends ChangeNotifier {
     }
   }
 
-  Future<void> signUp({
+  Future<String?> signUp({
     required String email,
     required String password,
     required Map<String, dynamic> profileData,
@@ -90,12 +94,12 @@ class UserAuthService extends ChangeNotifier {
         }
       }
       try {
-        await createdUser.sendEmailVerification();
-      } catch (error) {
-        _debugLog(
-          'Envoi email de vérification ignoré après inscription: $error',
-        );
-      } // L'échec de l'envoi d'e-mail ne doit pas bloquer l'inscription
+        await sendEmailVerification();
+        return null;
+      } on UserAuthException catch (error) {
+        // Le compte est créé : conserver la session pour permettre le renvoi.
+        return error.message;
+      }
     } on FirebaseAuthException catch (e) {
       if (createdUser != null) {
         try {
@@ -190,6 +194,7 @@ class UserAuthService extends ChangeNotifier {
       );
     }
     try {
+      await _auth.setLanguageCode('fr');
       await user.sendEmailVerification();
     } on FirebaseAuthException catch (e) {
       throw _convertAuthException(e);
@@ -299,7 +304,7 @@ class UserAuthService extends ChangeNotifier {
 
     try {
       final credential = await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
+        email: await LoginIdentifierService().resolve(email, password),
         password: password,
       );
 
@@ -478,6 +483,8 @@ class UserAuthService extends ChangeNotifier {
             'EXCEPTION FirebaseAuthException code="${e.code}" message="${e.message}"');
       }
       throw _convertAuthException(e);
+    } on ApiException catch (e) {
+      throw UserAuthException(message: e.message);
     } on UserAuthException {
       if (kDebugMode) {
         // ignore: avoid_print

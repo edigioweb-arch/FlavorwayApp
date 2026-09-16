@@ -26,193 +26,6 @@ class LaravelSyncService {
   final http.Client _client = http.Client();
   final ApiClient _apiClient = ApiClient();
 
-  static const Map<String, dynamic> _joliCoinWebMedia = <String, dynamic>{
-    'cover_path': 'images/restaurants/joli_coin/cover.png',
-    'menu_image_path': 'images/restaurants/joli_coin/article.jpeg',
-    'gallery_paths': <String>[
-      'images/restaurants/joli_coin/cover.png',
-      'images/restaurants/joli_coin/gallery_1.png',
-      'images/restaurants/joli_coin/gallery_2.png',
-      'images/restaurants/joli_coin/article.jpeg',
-    ],
-    'opening_hours': '10h - 23h',
-    'description':
-        'Une adresse conviviale à Brazzaville pour déguster grillades, fast-food, plats maison et planches à partager.',
-    'client_facing_type': 'Restaurant • BBQ • Fast-food',
-    'client_rating': '4.8',
-    'preparation_time': '15-30 min',
-    'distance_label': 'Brazzaville',
-    'services': <String>[
-      'Réservation',
-      'Menu QR',
-      'Sur place',
-      'À emporter',
-      'Livraison',
-    ],
-    'menu_categories': <Map<String, dynamic>>[
-      <String, dynamic>{
-        'id': 'petit_dejeuner',
-        'name': 'Petit déjeuner',
-        'dishes': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'id': 'oeuf_jambon',
-            'name': 'Oeuf au Jambon',
-            'description': 'Petit déjeuner Joli Coin',
-            'price_text': '2000F',
-            'price': 2000,
-            'image': null,
-          },
-          <String, dynamic>{
-            'id': 'oeuf_macedoine',
-            'name': 'Oeuf à la macédoine',
-            'description': 'Petit déjeuner Joli Coin',
-            'price_text': '2000F',
-            'price': 2000,
-            'image': null,
-          },
-        ],
-      },
-      <String, dynamic>{
-        'id': 'fast_food',
-        'name': 'Fast-food',
-        'dishes': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'id': 'pain_viande_hachee',
-            'name': 'Pain viande hachée',
-            'description': 'Pain garni à la viande hachée',
-            'price_text': '2000F',
-            'price': 2000,
-            'image': null,
-          },
-          <String, dynamic>{
-            'id': 'chawarma_viande',
-            'name': 'Chawarma viande',
-            'description': 'Chawarma à la viande',
-            'price_text': '3000F',
-            'price': 3000,
-            'image': null,
-          },
-          <String, dynamic>{
-            'id': 'chawarma_poulet',
-            'name': 'Chawarma poulet',
-            'description': 'Chawarma au poulet',
-            'price_text': '3000F',
-            'price': 3000,
-            'image': null,
-          },
-          <String, dynamic>{
-            'id': 'hamburger_royale',
-            'name': 'Hamburger Royale',
-            'description': 'Burger maison',
-            'price_text': '3000F',
-            'price': 3000,
-            'image': null,
-          },
-        ],
-      },
-      <String, dynamic>{
-        'id': 'legumes',
-        'name': 'Légumes',
-        'dishes': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'id': 'saka_saka',
-            'name': 'Saka-Saka',
-            'description': 'Plat de légumes traditionnel',
-            'price_text': '1500F',
-            'price': 1500,
-            'image': null,
-          },
-          <String, dynamic>{
-            'id': 'legumes_verte',
-            'name': 'Légumes verte',
-            'description': 'Légumes verts',
-            'price_text': '1000F',
-            'price': 1000,
-            'image': null,
-          },
-        ],
-      },
-      <String, dynamic>{
-        'id': 'bbq',
-        'name': 'BBQ',
-        'dishes': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'id': 'cuisse_poulet',
-            'name': 'Cuisse de poulet',
-            'description': 'Cuisse de poulet grillée',
-            'price_text': '1500 / 2000F',
-            'price': 1500,
-            'image': null,
-          },
-          <String, dynamic>{
-            'id': 'aile_poulet',
-            'name': 'Aile de poulet',
-            'description': 'Aile de poulet grillée',
-            'price_text': '1000F',
-            'price': 1000,
-            'image': null,
-          },
-          <String, dynamic>{
-            'id': 'brochette_viande',
-            'name': 'Brochette de viande',
-            'description': 'Brochette grillée',
-            'price_text': '1000F',
-            'price': 1000,
-            'image': null,
-          },
-          <String, dynamic>{
-            'id': 'cotes_braisees',
-            'name': 'Côtes braisées',
-            'description': 'Côtes marinées et braisées',
-            'price_text': '3000F',
-            'price': 3000,
-            'image': null,
-          },
-          <String, dynamic>{
-            'id': 'poisson_braise',
-            'name': 'Poisson braisé',
-            'description': 'Poisson braisé selon format',
-            'price_text': '4000 / 5000 / 6000F',
-            'price': 4000,
-            'image': null,
-          },
-        ],
-      },
-      <String, dynamic>{
-        'id': 'repas',
-        'name': 'Repas',
-        'dishes': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'id': 'poulet_mayo',
-            'name': 'Poulet Mayo',
-            'description': 'La spécialité incontournable du coin',
-            'price_text': '4000F',
-            'price': 4000,
-            'image': null,
-          },
-          <String, dynamic>{
-            'id': 'poulet_braise',
-            'name': 'Poulet braisé',
-            'description': 'Poulet braisé accompagné selon disponibilité',
-            'price_text': '4000F',
-            'price': 4000,
-            'image': null,
-          },
-          <String, dynamic>{
-            'id': 'riz_poulet',
-            'name': 'Riz au poulet',
-            'description': 'Riz parfumé accompagné de poulet',
-            'price_text': '3500F',
-            'price': 3500,
-            'image': null,
-          },
-        ],
-      },
-    ],
-    'is_open': true,
-    'is_recommended': true,
-  };
-
   String get apiBaseUrl => _apiClient.baseUrl;
 
   Future<Map<String, dynamic>> syncCurrentClient() async {
@@ -224,7 +37,8 @@ class LaravelSyncService {
       );
     }
 
-    final profileSnapshot = await _firestore.collection('users').doc(user.uid).get();
+    final profileSnapshot =
+        await _firestore.collection('users').doc(user.uid).get();
     final profile = profileSnapshot.data();
 
     if (!profileSnapshot.exists || profile == null) {
@@ -351,9 +165,13 @@ class LaravelSyncService {
     final openingHours = _normalizedString(profile['openingHours']);
     final restaurantEmail = _normalizedString(profile['email']) ?? user.email;
     final deliveryMode =
-        (_normalizedString(profile['deliveryMode']) ?? 'flavorway').toLowerCase();
-    final restaurantDeliveryFee = _normalizedNumber(profile['restaurantDeliveryFee']);
-    final mediaPayload = _restaurantMediaPayload(restaurantName);
+        (_normalizedString(profile['deliveryMode']) ?? 'flavorway')
+            .toLowerCase();
+    final restaurantDeliveryFee =
+        _normalizedNumber(profile['restaurantDeliveryFee']);
+    final requestedCourierCount = _normalizedInt(
+      profile['requestedCourierCount'],
+    );
 
     if (restaurantName == null || restaurantName.isEmpty) {
       throw const LaravelSyncException(
@@ -381,33 +199,19 @@ class LaravelSyncService {
       'phone': phone ?? '',
       'restaurant': <String, dynamic>{
         'name': restaurantName,
-        'description':
-            profileDescription ??
-            mediaPayload['description'] as String? ??
+        'description': profileDescription ??
             (descriptionParts.isEmpty ? null : descriptionParts.join(' • ')),
         'phone': phone ?? '',
         'email': restaurantEmail ?? '',
         'cuisine_type': cuisineType ?? '',
         'address': resolvedAddress,
-        'opening_hours':
-            openingHours ??
-            _normalizedString(mediaPayload['opening_hours']),
-        'client_facing_type':
-            _normalizedString(mediaPayload['client_facing_type']),
-        'client_rating': _normalizedString(mediaPayload['client_rating']),
-        'preparation_time':
-            _normalizedString(mediaPayload['preparation_time']),
-        'delivery_mode': deliveryMode == 'restaurant' ? 'restaurant' : 'flavorway',
+        'opening_hours': openingHours,
+        'delivery_mode':
+            deliveryMode == 'restaurant' ? 'restaurant' : 'flavorway',
         'restaurant_delivery_fee':
             deliveryMode == 'restaurant' ? restaurantDeliveryFee : null,
-        'distance_label': _normalizedString(mediaPayload['distance_label']),
-        'services': mediaPayload['services'] ?? <String>[],
-        'menu_categories': mediaPayload['menu_categories'] ?? <Map<String, dynamic>>[],
-        'cover_path': _normalizedString(mediaPayload['cover_path']),
-        'menu_image_path': _normalizedString(mediaPayload['menu_image_path']),
-        'gallery_paths': mediaPayload['gallery_paths'] ?? <String>[],
-        'is_open': mediaPayload['is_open'] ?? true,
-        'is_recommended': mediaPayload['is_recommended'] ?? false,
+        'requested_courier_count':
+            deliveryMode == 'restaurant' ? requestedCourierCount : null,
       },
     };
 
@@ -498,6 +302,22 @@ class LaravelSyncService {
     return null;
   }
 
+  static int? _normalizedInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    if (value is String) {
+      return int.tryParse(value.trim());
+    }
+
+    return null;
+  }
+
   static String? _extractServerMessage(Map<String, dynamic> decoded) {
     final message = decoded['message'];
     if (message is String && message.trim().isNotEmpty) {
@@ -505,20 +325,6 @@ class LaravelSyncService {
     }
 
     return null;
-  }
-
-  static Map<String, dynamic> _restaurantMediaPayload(String? restaurantName) {
-    if (restaurantName == null) {
-      return const <String, dynamic>{};
-    }
-
-    final normalized = restaurantName.trim().toLowerCase();
-
-    if (kDebugMode && normalized == 'joli coin') {
-      return _joliCoinWebMedia;
-    }
-
-    return const <String, dynamic>{};
   }
 
   @visibleForTesting

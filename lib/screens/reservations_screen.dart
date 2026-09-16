@@ -210,13 +210,15 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     final restaurants = context.read<RestaurantService>().approvedRestaurants;
     if (restaurants.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Aucun restaurant disponible pour réserver.')),
+        const SnackBar(
+            content: Text('Aucun restaurant disponible pour réserver.')),
       );
       return;
     }
 
     final restaurantId = ValueNotifier<String>(restaurants.first.id);
-    final dateController = TextEditingController(text: '2026-08-18');
+    final dateController = TextEditingController(
+        text: DateTime.now().toIso8601String().split('T').first);
     final timeController = TextEditingController(text: '20:00');
     final guestsController = TextEditingController(text: '2');
     final notesController = TextEditingController();
@@ -321,14 +323,15 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                             : () async {
                                 setModalState(() => submitting = true);
                                 try {
-                                  final created = await ReservationService.instance
+                                  final created = await ReservationService
+                                      .instance
                                       .createReservation(
-                                    restaurantId:
-                                        int.parse(restaurantId.value),
+                                    restaurantId: int.parse(restaurantId.value),
                                     reservationDate: dateController.text.trim(),
                                     reservationTime: timeController.text.trim(),
                                     partySize:
-                                        int.tryParse(guestsController.text) ?? 0,
+                                        int.tryParse(guestsController.text) ??
+                                            0,
                                     notes: notesController.text,
                                   );
 
@@ -514,7 +517,8 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                 Navigator.maybePop(context);
 
                 try {
-                  await ReservationService.instance.cancelReservation(reservation);
+                  await ReservationService.instance
+                      .cancelReservation(reservation);
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -599,7 +603,8 @@ class _ReservationCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                 decoration: BoxDecoration(
                   color: statusColor.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(30),

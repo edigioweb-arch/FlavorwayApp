@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../services/api_client.dart';
+import '../models/payment_model.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -11,7 +14,16 @@ import '../services/notification_service.dart';
 import '../services/payment_method_service.dart';
 
 class CheckoutScreen extends StatefulWidget {
-  const CheckoutScreen({super.key});
+  const CheckoutScreen(
+      {super.key,
+      this.orderService,
+      this.paymentService,
+      this.initialPaymentMethod,
+      this.onOrderCreated});
+  final OrderService? orderService;
+  final PaymentService? paymentService;
+  final String? initialPaymentMethod;
+  final void Function(OrderModel)? onOrderCreated;
 
   @override
   State<CheckoutScreen> createState() => _CheckoutScreenState();
@@ -22,16 +34,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   static const Color violetFlavor = Color(0xFF4B1F5C);
 
   String selectedPaymentMethod = 'Paiement à la livraison';
-  Map<String, dynamic>? _selectedAddress;
+  Map<String, dynamic>? get _selectedAddress =>
+      context.read<CartService>().deliveryAddress;
   final TextEditingController _noteController = TextEditingController();
   bool _submitting = false;
+  String? _submissionError;
   String? _lastQuotedFingerprint;
   String? _pendingIdempotencyKey;
+  String? _pendingRequest;
 
   @override
   void initState() {
     super.initState();
-    selectedPaymentMethod = PaymentMethodService.instance.selectedMethod.name;
+    selectedPaymentMethod = widget.initialPaymentMethod ??
+        PaymentMethodService.instance.selectedMethod.name;
   }
 
   @override
@@ -54,13 +70,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ),
     );
 
-    if (result is! Map) return;
+    if (!mounted || result is! Map) return;
 
     final full = (result['full'] as String?)?.trim();
     if (full == null || full.isEmpty) return;
 
     setState(() {
-      _selectedAddress = Map<String, dynamic>.from(result);
+      context
+          .read<CartService>()
+          .selectDeliveryAddress(Map<String, dynamic>.from(result));
     });
 
     await _refreshQuote();
@@ -74,13 +92,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ),
     );
 
+    if (!mounted) return;
     if (result is String && result.trim().isNotEmpty) {
       setState(() {
         selectedPaymentMethod = result.trim();
       });
     } else {
       setState(() {
-        selectedPaymentMethod = PaymentMethodService.instance.selectedMethod.name;
+        selectedPaymentMethod =
+            PaymentMethodService.instance.selectedMethod.name;
       });
     }
 
@@ -89,7 +109,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   void _ensureQuote() {
     final cart = context.read<CartService>();
-    if (cart.items.isEmpty) {
+    if (cart.items.isEmpty || _selectedAddress == null) {
       _lastQuotedFingerprint = null;
       return;
     }
@@ -109,14 +129,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _refreshQuote() async {
     final cart = context.read<CartService>();
     final address = _selectedAddress;
+    if (address == null) return;
 
     await cart.refreshQuote(
-      deliveryCityId: address?['city_id']?.toString(),
-      deliveryZoneAreaId: address?['delivery_zone_area_id']?.toString(),
-      deliveryZoneAreaName: address?['delivery_zone_area_name']?.toString(),
-      deliveryAddressLine: address?['full']?.toString(),
-      deliveryLatitude: address?['latitude'] as double?,
-      deliveryLongitude: address?['longitude'] as double?,
       paymentMethod: selectedPaymentMethod,
     );
 
@@ -125,138 +140,172 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () {
-            if (Navigator.canPop(context)) {
-              Navigator.pop(context);
-            } else {
-              Navigator.pushNamedAndRemoveUntil(
-                  context, '/home', (route) => false);
-            }
-          },
-        ),
-        title: Text(
-          'Paiement',
-          style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
-      ),
-      body: Consumer<CartService>(
-        builder: (context, cart, child) {
-          return Column(
-            children: [
-              if (cart.quoteErrorMessage != null)
-                Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF2F0),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFF4C7C3)),
-                  ),
-                  child: Text(
-                    cart.quoteErrorMessage!,
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      color: const Color(0xFF7A2430),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              Container(
-                margin: const EdgeInsets.all(20),
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 15,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    _summaryRow(
-                      'Articles (${cart.items.length})',
-                      '${cart.displaySubtotal.toStringAsFixed(0)} ${cart.displayCurrency}',
-                    ),
-                    const Divider(),
-                    _summaryRow(
-                      'Livraison',
-                      '${cart.displayDeliveryFee.toStringAsFixed(0)} ${cart.displayCurrency}',
-                    ),
-                    if (cart.displayDiscount > 0) ...[
-                      const Divider(),
-                      _summaryRow(
-                        'Réduction',
-                        '-${cart.displayDiscount.toStringAsFixed(0)} ${cart.displayCurrency}',
-                      ),
-                    ],
-                    const Divider(),
-                    _summaryRow(
-                      'TOTAL',
-                      '${cart.displayTotal.toStringAsFixed(0)} ${cart.displayCurrency}',
-                      isTotal: true,
-                    ),
-                    if (cart.quoteStatus == CartQuoteStatus.loadingQuote) ...[
-                      const SizedBox(height: 12),
-                      const LinearProgressIndicator(minHeight: 4),
-                    ],
-                  ],
-                ),
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+    return PopScope(
+        canPop: !_submitting,
+        child: Scaffold(
+          backgroundColor: Colors.grey.shade50,
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.black),
+              onPressed: _submitting
+                  ? null
+                  : () {
+                      if (Navigator.canPop(context)) {
+                        Navigator.pop(context);
+                      } else {
+                        Navigator.pushNamedAndRemoveUntil(
+                            context, '/home', (route) => false);
+                      }
+                    },
+            ),
+            title: Text(
+              'Adresse et commande',
+              style: GoogleFonts.poppins(
+                  fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+          ),
+          body: Consumer<CartService>(
+            builder: (context, cart, child) {
+              return AbsorbPointer(
+                  absorbing: _submitting,
+                  child: SingleChildScrollView(
+                      child: Column(
                     children: [
-                      _buildSectionTitle('Articles commandés'),
-                      _buildCartItems(cart),
-                      const SizedBox(height: 12),
-                      _buildSectionTitle('Adresse de livraison'),
-                      _buildAddressSelector(),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('Mode de paiement'),
-                      _buildPaymentSelector(),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('Note pour le restaurant'),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.grey.shade200),
+                      Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(children: [
+                            _buildSectionTitle('Adresse de livraison'),
+                            _buildAddressSelector()
+                          ])),
+                      if (cart.quoteErrorMessage != null)
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF2F0),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFF4C7C3)),
+                          ),
+                          child: Text(
+                            cart.quoteErrorMessage!,
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              color: const Color(0xFF7A2430),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ),
-                        child: TextField(
-                          controller: _noteController,
-                          maxLines: 3,
-                          decoration: InputDecoration(
-                            hintText: 'Ex: Sans oignon s\'il vous plaît',
-                            hintStyle: GoogleFonts.poppins(color: Colors.grey),
-                            border: InputBorder.none,
+                      Container(
+                        margin: const EdgeInsets.all(20),
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 15,
+                              offset: const Offset(0, 5),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            _summaryRow(
+                              'Articles (${cart.items.length})',
+                              cart.hasValidQuote
+                                  ? '${cart.displaySubtotal.toStringAsFixed(0)} ${cart.displayCurrency}'
+                                  : 'À vérifier',
+                            ),
+                            const Divider(),
+                            _summaryRow(
+                              'Livraison',
+                              cart.hasValidQuote
+                                  ? '${cart.displayDeliveryFee.toStringAsFixed(0)} ${cart.displayCurrency}'
+                                  : 'Après adresse',
+                            ),
+                            if (cart.displayDiscount > 0) ...[
+                              const Divider(),
+                              _summaryRow(
+                                'Réduction',
+                                '-${cart.displayDiscount.toStringAsFixed(0)} ${cart.displayCurrency}',
+                              ),
+                            ],
+                            const Divider(),
+                            _summaryRow(
+                              'TOTAL',
+                              cart.hasValidQuote
+                                  ? '${cart.displayTotal.toStringAsFixed(0)} ${cart.displayCurrency}'
+                                  : 'À calculer',
+                              isTotal: true,
+                            ),
+                            if (cart.quoteStatus ==
+                                CartQuoteStatus.loadingQuote) ...[
+                              const SizedBox(height: 12),
+                              const LinearProgressIndicator(minHeight: 4),
+                            ],
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.zero,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildSectionTitle('Articles commandés'),
+                              _buildCartItems(cart),
+                              const SizedBox(height: 12),
+                              const SizedBox(height: 24),
+                              _buildSectionTitle('Mode de paiement'),
+                              _buildPaymentSelector(),
+                              const SizedBox(height: 24),
+                              _buildSectionTitle('Note pour le restaurant'),
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade50,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border:
+                                      Border.all(color: Colors.grey.shade200),
+                                ),
+                                child: TextField(
+                                  controller: _noteController,
+                                  maxLines: 3,
+                                  decoration: InputDecoration(
+                                    hintText:
+                                        'Ex: Sans oignon s\'il vous plaît',
+                                    hintStyle:
+                                        GoogleFonts.poppins(color: Colors.grey),
+                                    border: InputBorder.none,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
+                      if (_selectedAddress != null &&
+                          !cart.hasValidQuote &&
+                          cart.quoteStatus != CartQuoteStatus.loadingQuote)
+                        TextButton(
+                            onPressed: _refreshQuote,
+                            child: const Text('Recalculer le montant')),
+                      if (_submissionError != null)
+                        Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Text(_submissionError!,
+                                style: const TextStyle(color: Colors.red))),
+                      _buildOrderButton(context, cart),
                     ],
-                  ),
-                ),
-              ),
-              _buildOrderButton(context, cart),
-            ],
-          );
-        },
-      ),
-    );
+                  )));
+            },
+          ),
+        ));
   }
 
   Widget _buildSectionTitle(String title) {
@@ -306,14 +355,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.location_on_outlined),
               title: Text(
-                (_selectedAddress?['name'] ?? _selectedAddress?['label'] ?? 'Adresse').toString(),
+                (_selectedAddress?['name'] ??
+                        _selectedAddress?['label'] ??
+                        'Adresse')
+                    .toString(),
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               subtitle: Text(
                 [
                   (_selectedAddress?['full'] ?? '').toString(),
                   (_selectedAddress?['city_name'] ?? '').toString(),
-                  (_selectedAddress?['delivery_zone_area_name'] ?? '').toString(),
+                  (_selectedAddress?['delivery_zone_area_name'] ?? '')
+                      .toString(),
                 ].where((value) => value.trim().isNotEmpty).join(' • '),
               ),
             ),
@@ -321,7 +374,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           TextButton.icon(
             onPressed: _openAddressBook,
             icon: const Icon(Icons.add, size: 18),
-            label: Text('Ajouter une adresse',
+            label: Text(
+                _selectedAddress == null
+                    ? 'Choisir une adresse'
+                    : 'Changer d’adresse',
                 style: TextStyle(color: orangeFlavor)),
           ),
         ],
@@ -349,7 +405,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
           ...[
             ('Airtel Money', null, Colors.redAccent, 'Paiement instantané'),
-            ('MTN MoMo', 'assets/images/mtnmomo.png', Colors.green, 'Paiement instantané'),
+            (
+              'MTN MoMo',
+              'assets/images/mtnmomo.png',
+              Colors.green,
+              'Paiement instantané'
+            ),
             ('Carte bancaire', null, Colors.blue, 'Visa, Mastercard'),
             ('Paiement à la livraison', null, Colors.green, null),
           ].map(
@@ -373,7 +434,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       color: entry.$3,
                     ),
                   const SizedBox(width: 12),
-                  Column(
+                  Expanded(
+                      child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
@@ -386,7 +448,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           style: const TextStyle(color: Colors.grey),
                         ),
                     ],
-                  ),
+                  )),
                 ],
               ),
               value: entry.$1,
@@ -403,7 +465,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Widget _buildOrderButton(BuildContext context, CartService cart) {
-    final canSubmit = cart.hasValidQuote &&
+    final canSubmit = _selectedAddress != null &&
+        cart.hasValidQuote &&
         cart.quoteStatus != CartQuoteStatus.loadingQuote &&
         !_submitting;
 
@@ -423,7 +486,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         onPressed: !canSubmit
             ? null
             : () async {
-                setState(() => _submitting = true);
+                setState(() {
+                  _submitting = true;
+                  _submissionError = null;
+                });
                 dynamic createdOrder;
                 try {
                   final quote = cart.quote!;
@@ -432,19 +498,37 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     throw Exception('Adresse de livraison introuvable.');
                   }
 
+                  final request = jsonEncode([
+                    cart.cartFingerprint,
+                    address,
+                    selectedPaymentMethod,
+                    _noteController.text.trim()
+                  ]);
+                  if (_pendingRequest != request) {
+                    _pendingIdempotencyKey = null;
+                    _pendingRequest = request;
+                  }
                   _pendingIdempotencyKey ??=
-                      OrderService.instance.generateIdempotencyKey();
+                      (widget.orderService ?? OrderService.instance)
+                          .generateIdempotencyKey();
 
-                  final order = await OrderService.instance.createOrder(
+                  final order =
+                      await (widget.orderService ?? OrderService.instance)
+                          .createOrder(
                     restaurantId: cart.restaurantId ?? quote.restaurantId,
                     items: cart.items,
                     deliveryAddress: <String, dynamic>{
-                      'label': (address['name'] ?? address['label'] ?? 'Adresse').toString(),
+                      'label':
+                          (address['name'] ?? address['label'] ?? 'Adresse')
+                              .toString(),
                       'address_line': (address['full'] ?? '').toString(),
                       'city': (address['city_name'] ?? '').toString(),
-                      'city_id': int.tryParse((address['city_id'] ?? '').toString()),
-                      'delivery_zone_area_id': int.tryParse((address['delivery_zone_area_id'] ?? '').toString()),
-                      'delivery_zone_area_name': (address['delivery_zone_area_name'] ?? '').toString(),
+                      'city_id':
+                          int.tryParse((address['city_id'] ?? '').toString()),
+                      'delivery_zone_area_id': int.tryParse(
+                          (address['delivery_zone_area_id'] ?? '').toString()),
+                      'delivery_zone_area_name':
+                          (address['delivery_zone_area_name'] ?? '').toString(),
                       'latitude': address['latitude'],
                       'longitude': address['longitude'],
                     },
@@ -453,34 +537,82 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     note: _noteController.text.trim(),
                   );
 
-                  NotificationService.instance.addNotification(
-                    title: 'Commande créée',
-                    message:
-                        'Votre commande ${order.orderNumber} est enregistrée.',
-                  );
                   createdOrder = order;
+                  if (widget.onOrderCreated != null) {
+                    widget.onOrderCreated!(order);
+                  } else {
+                    NotificationService.instance.addNotification(
+                      title: 'Commande créée',
+                      message:
+                          'Votre commande ${order.orderNumber} est enregistrée.',
+                    );
+                  }
+                  if (!context.mounted) return;
+                  if (order.total != quote.total) {
+                    final proceed = await showDialog<bool>(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (dialogContext) => AlertDialog(
+                        title:
+                            const Text('Montant actualisé par le restaurant'),
+                        content: Text(
+                            'Commande ${order.orderNumber} créée. Le montant est passé de ${quote.total.toStringAsFixed(0)} à ${order.total.toStringAsFixed(0)} ${order.currency}.'),
+                        actions: [
+                          TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, false),
+                              child: const Text('Voir ma commande')),
+                          TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, true),
+                              child: const Text('Continuer vers le paiement')),
+                        ],
+                      ),
+                    );
+                    if (!context.mounted) return;
+                    if (proceed != true) {
+                      cart.clear();
+                      Navigator.pushReplacementNamed(context, '/order-tracking',
+                          arguments: order.orderNumber);
+                      return;
+                    }
+                  }
 
+                  PaymentModel payment;
                   if (selectedPaymentMethod != 'Paiement à la livraison') {
-                    await PaymentService.instance.initiatePayment(
+                    payment =
+                        await (widget.paymentService ?? PaymentService.instance)
+                            .initiatePayment(
                       orderNumber: order.orderNumber,
                       paymentMethod: selectedPaymentMethod,
                       phone: null,
                       idempotencyKey: _pendingIdempotencyKey,
                     );
                   } else {
-                    await PaymentService.instance.initiatePayment(
+                    payment =
+                        await (widget.paymentService ?? PaymentService.instance)
+                            .initiatePayment(
                       orderNumber: order.orderNumber,
                       paymentMethod: 'cash',
                       idempotencyKey: _pendingIdempotencyKey,
                     );
                   }
 
+                  if (payment.isFailed) {
+                    throw ApiException(
+                        statusCode: 422,
+                        message:
+                            payment.failureMessage ?? 'Paiement non abouti.');
+                  }
                   cart.clear();
                   _pendingIdempotencyKey = null;
                   if (!context.mounted) return;
                   Navigator.pushReplacementNamed(
                     context,
-                    '/order-success',
+                    payment.isPaid ||
+                            selectedPaymentMethod == 'Paiement à la livraison'
+                        ? '/order-success'
+                        : '/order-tracking',
                     arguments: order.orderNumber,
                   );
                 } catch (e) {
@@ -491,7 +623,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text(
-                          'Commande créée, mais le paiement n’a pas pu être initié. Réessayez depuis le suivi.',
+                          'Commande enregistrée, paiement non abouti. Retrouvez son état dans le suivi et dans Mes commandes.',
                         ),
                       ),
                     );
@@ -502,11 +634,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     );
                     return;
                   }
-                  final message = e.toString().replaceFirst('Exception: ', '');
+                  final message = e is ApiException
+                      ? e.message
+                      : 'Impossible de créer la commande. Votre panier est conservé. Réessayez.';
                   if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Erreur : $message')),
-                  );
+                  setState(() => _submissionError = message);
                 } finally {
                   if (mounted) {
                     setState(() => _submitting = false);
@@ -539,22 +671,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
+        Expanded(
+            child: Text(
           label,
           style: GoogleFonts.poppins(
             fontSize: isTotal ? 18 : 16,
             fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
             color: isTotal ? violetFlavor : Colors.black87,
           ),
-        ),
-        Text(
+        )),
+        Flexible(
+            child: Text(
           value,
+          textAlign: TextAlign.end,
           style: GoogleFonts.poppins(
             fontSize: isTotal ? 20 : 16,
             fontWeight: FontWeight.bold,
             color: isTotal ? orangeFlavor : Colors.black87,
           ),
-        ),
+        )),
       ],
     );
   }
@@ -606,7 +741,9 @@ Widget _buildCartItems(CartService cart) {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '${item.totalPrice.toStringAsFixed(0)} ${item.currencyCode}',
+                cart.quotedLine(item) != null
+                    ? '${cart.quotedLine(item)!.lineTotal.toStringAsFixed(0)} ${cart.displayCurrency}'
+                    : 'À vérifier',
                 style: GoogleFonts.poppins(
                   fontWeight: FontWeight.bold,
                 ),
@@ -614,6 +751,8 @@ Widget _buildCartItems(CartService cart) {
               if (item.options.isNotEmpty)
                 Text(
                   item.options.values.join(' • '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.poppins(
                     fontSize: 11,
                     color: Colors.grey.shade600,

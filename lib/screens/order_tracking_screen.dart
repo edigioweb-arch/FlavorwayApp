@@ -4,14 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../services/order_service.dart';
+import '../services/payment_service.dart';
+import '../widgets/order_payment_action.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
   const OrderTrackingScreen({
     super.key,
     required this.orderReference,
+    this.orderService,
+    this.paymentService,
   });
 
   final String orderReference;
+  final OrderService? orderService;
+  final PaymentService? paymentService;
 
   @override
   State<OrderTrackingScreen> createState() => _OrderTrackingScreenState();
@@ -21,7 +27,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   static const Color orangeFlavor = Color(0xFFF36A2D);
   static const Color violetFlavor = Color(0xFF4B1F5C);
 
-  final OrderService _orderService = OrderService.instance;
+  OrderService get _orderService =>
+      widget.orderService ?? OrderService.instance;
 
   OrderModel? _order;
   Timer? _pollingTimer;
@@ -88,7 +95,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   void _restartPollingIfNeeded() {
     _pollingTimer?.cancel();
 
-    if (_order == null || _order!.isTerminal) {
+    if (_order == null ||
+        (_order!.isTerminal &&
+            !_order!.canRetryPayment &&
+            !(_order!.paymentMethod == 'cash' &&
+                _order!.status == 'delivered' &&
+                const ['unpaid', 'pending', 'failed']
+                    .contains(_order!.paymentStatus)))) {
       return;
     }
 
@@ -122,8 +135,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(20),
                     children: [
-                      if (_refreshing) const LinearProgressIndicator(minHeight: 3),
+                      if (_refreshing)
+                        const LinearProgressIndicator(minHeight: 3),
                       _buildSummaryCard(_order!),
+                      OrderPaymentAction(
+                          order: _order!,
+                          paymentService: widget.paymentService,
+                          onRefresh: () => _loadOrder()),
                       const SizedBox(height: 16),
                       _buildTotalsCard(_order!),
                       const SizedBox(height: 16),
@@ -143,12 +161,14 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.receipt_long_outlined, size: 48, color: Colors.grey),
+            const Icon(Icons.receipt_long_outlined,
+                size: 48, color: Colors.grey),
             const SizedBox(height: 12),
             Text(
               _error ?? 'Erreur inconnue.',
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
+              style:
+                  GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 14),
             ElevatedButton(
@@ -196,11 +216,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             runSpacing: 8,
             spacing: 12,
             children: [
-              _meta('Paiement', _paymentLabel(order.paymentMethod, order.paymentStatus)),
-              _meta('Livraison', order.deliveryMode == 'restaurant'
-                  ? 'Restaurant'
-                  : (order.deliveryZoneName.isNotEmpty ? order.deliveryZoneName : 'FlavorWay')),
-              _meta('Adresse', order.deliveryAddress.isEmpty ? '-' : order.deliveryAddress),
+              _meta('Paiement', order.paymentLabel),
+              _meta(
+                  'Livraison',
+                  order.deliveryMode == 'restaurant'
+                      ? 'Restaurant'
+                      : (order.deliveryZoneName.isNotEmpty
+                          ? order.deliveryZoneName
+                          : 'FlavorWay')),
+              _meta('Adresse',
+                  order.deliveryAddress.isEmpty ? '-' : order.deliveryAddress),
               _meta('Date', _formatDate(order.createdAt)),
             ],
           ),
@@ -254,7 +279,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         Expanded(
                           child: Text(
                             '${item.quantity} × ${item.name}',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                            style:
+                                GoogleFonts.inter(fontWeight: FontWeight.w700),
                           ),
                         ),
                         Text(
@@ -294,7 +320,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           if (order.timeline.isEmpty)
             Text(
               'Aucun historique disponible pour cette commande.',
-              style: GoogleFonts.inter(color: const Color(0xFF6F7390), fontSize: 13),
+              style: GoogleFonts.inter(
+                  color: const Color(0xFF6F7390), fontSize: 13),
             )
           else
             ...order.timeline.map((step) => Padding(
@@ -318,7 +345,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                           children: [
                             Text(
                               _humanStatus(step.status),
-                              style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                              style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w700),
                             ),
                             const SizedBox(height: 2),
                             Text(
@@ -397,7 +425,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     );
   }
 
-  Widget _amountRow(String label, double value, String currency, {bool emphasize = false}) {
+  Widget _amountRow(String label, double value, String currency,
+      {bool emphasize = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -440,11 +469,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       default:
         return violetFlavor;
     }
-  }
-
-  String _paymentLabel(String method, String status) {
-    final normalizedMethod = method.trim().isEmpty ? 'non précisé' : method;
-    return '$normalizedMethod • $status';
   }
 
   String _humanStatus(String status) {
