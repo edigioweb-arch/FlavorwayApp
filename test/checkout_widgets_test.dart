@@ -203,6 +203,25 @@ void main() {
     await tester.pump();
     expect(cart.items.single.optionValueIds, isEmpty);
   });
+  testWidgets(
+      'valid address automatically displays server totals and enables order without recalculate',
+      (tester) async {
+    final cart = CartService(quoteService: ImmediateQuotes())..addItem(item());
+    await cart.selectDeliveryAddress(address, paymentMethod: 'cash');
+    await mount(
+        tester,
+        const CheckoutScreen(initialPaymentMethod: 'Paiement à la livraison'),
+        cart);
+    expect(find.text('Recalculer le montant'), findsNothing);
+    expect(find.text('Réessayer'), findsNothing);
+    expect(find.text('1100 XAF'), findsWidgets);
+    final label = find.textContaining('Passer la commande');
+    await tester.ensureVisible(label);
+    final button = tester.widget<ElevatedButton>(
+        find.ancestor(of: label, matching: find.byType(ElevatedButton)).first);
+    expect(button.onPressed, isNotNull);
+    expect(cart.hasValidQuote, isTrue);
+  });
   testWidgets('failed creation keeps cart address and retry key',
       (tester) async {
     final cart = CartService(quoteService: ImmediateQuotes())

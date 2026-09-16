@@ -13,6 +13,12 @@ import '../services/payment_service.dart';
 import '../services/notification_service.dart';
 import '../services/payment_method_service.dart';
 
+String _quotePlaceholder(CartService cart) {
+  if (cart.deliveryAddress == null) return 'Après adresse';
+  if (cart.quoteStatus == CartQuoteStatus.quoteError) return 'Indisponible';
+  return 'Calcul du montant…';
+}
+
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen(
       {super.key,
@@ -75,13 +81,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final full = (result['full'] as String?)?.trim();
     if (full == null || full.isEmpty) return;
 
-    setState(() {
-      context
-          .read<CartService>()
-          .selectDeliveryAddress(Map<String, dynamic>.from(result));
-    });
-
-    await _refreshQuote();
+    await context.read<CartService>().selectDeliveryAddress(
+          Map<String, dynamic>.from(result),
+          paymentMethod: selectedPaymentMethod,
+        );
   }
 
   Future<void> _openPaymentMethods() async {
@@ -218,14 +221,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               'Articles (${cart.items.length})',
                               cart.hasValidQuote
                                   ? '${cart.displaySubtotal.toStringAsFixed(0)} ${cart.displayCurrency}'
-                                  : 'À vérifier',
+                                  : _quotePlaceholder(cart),
                             ),
                             const Divider(),
                             _summaryRow(
                               'Livraison',
                               cart.hasValidQuote
                                   ? '${cart.displayDeliveryFee.toStringAsFixed(0)} ${cart.displayCurrency}'
-                                  : 'Après adresse',
+                                  : _quotePlaceholder(cart),
                             ),
                             if (cart.displayDiscount > 0) ...[
                               const Divider(),
@@ -239,7 +242,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               'TOTAL',
                               cart.hasValidQuote
                                   ? '${cart.displayTotal.toStringAsFixed(0)} ${cart.displayCurrency}'
-                                  : 'À calculer',
+                                  : _quotePlaceholder(cart),
                               isTotal: true,
                             ),
                             if (cart.quoteStatus ==
@@ -291,10 +294,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                       if (_selectedAddress != null &&
                           !cart.hasValidQuote &&
-                          cart.quoteStatus != CartQuoteStatus.loadingQuote)
+                          cart.quoteStatus == CartQuoteStatus.quoteError)
                         TextButton(
                             onPressed: _refreshQuote,
-                            child: const Text('Recalculer le montant')),
+                            child: const Text('Réessayer')),
                       if (_submissionError != null)
                         Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -743,7 +746,7 @@ Widget _buildCartItems(CartService cart) {
               Text(
                 cart.quotedLine(item) != null
                     ? '${cart.quotedLine(item)!.lineTotal.toStringAsFixed(0)} ${cart.displayCurrency}'
-                    : 'À vérifier',
+                    : _quotePlaceholder(cart),
                 style: GoogleFonts.poppins(
                   fontWeight: FontWeight.bold,
                 ),

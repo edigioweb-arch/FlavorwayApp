@@ -125,10 +125,11 @@ class CartService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void selectDeliveryAddress(Map<String, dynamic> address) {
+  Future<bool> selectDeliveryAddress(Map<String, dynamic> address,
+      {String? paymentMethod}) {
     _deliveryAddress = Map.of(address);
     _invalidateQuote();
-    notifyListeners();
+    return refreshQuote(paymentMethod: paymentMethod);
   }
 
   Future<bool> refreshQuote({

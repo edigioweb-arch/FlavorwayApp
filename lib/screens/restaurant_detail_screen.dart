@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../models/restaurant_model.dart';
 import '../services/restaurant_service.dart';
 import 'product_detail_screen.dart';
+import '../widgets/restaurant_gallery_lightbox.dart';
 
 class RestaurantDetailScreen extends StatefulWidget {
   const RestaurantDetailScreen({super.key});
@@ -28,7 +29,8 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
 
     final routeArg = ModalRoute.of(context)?.settings.arguments;
     final service = context.read<RestaurantService>();
-    _restaurantId = routeArg is String ? routeArg : service.currentRestaurant?.id;
+    _restaurantId =
+        routeArg is String ? routeArg : service.currentRestaurant?.id;
 
     if (_restaurantId != null) {
       service.selectRestaurant(_restaurantId!);
@@ -135,9 +137,13 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
                           borderRadius: BorderRadius.circular(14),
                           child: SizedBox(
                             width: 128,
-                            child: _remoteOrAssetImage(
-                              restaurant.galleryImages[index],
-                              fit: BoxFit.cover,
+                            child: RestaurantGalleryThumbnail(
+                              images: restaurant.galleryImages,
+                              index: index,
+                              child: _remoteOrAssetImage(
+                                restaurant.galleryImages[index],
+                                fit: BoxFit.cover,
+                              ),
                             ),
                           ),
                         );
@@ -179,7 +185,8 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
             child: SizedBox(
               height: 220,
               width: double.infinity,
-              child: _remoteOrAssetImage(restaurant.coverImage, fit: BoxFit.cover),
+              child:
+                  _remoteOrAssetImage(restaurant.coverImage, fit: BoxFit.cover),
             ),
           ),
           Padding(
@@ -213,8 +220,9 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
                       child: Text(
                         restaurant.isOpen ? 'Ouvert' : 'Fermé',
                         style: GoogleFonts.poppins(
-                          color:
-                              restaurant.isOpen ? Colors.green.shade700 : Colors.red.shade700,
+                          color: restaurant.isOpen
+                              ? Colors.green.shade700
+                              : Colors.red.shade700,
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                         ),
