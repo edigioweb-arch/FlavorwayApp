@@ -6,6 +6,28 @@ import 'package:flavorapps/widgets/cart_button.dart';
 import 'cart_checkout_flow_test.dart' show item;
 
 void main() {
+  testWidgets('restaurant cart bar stays accessible and opens shared cart',
+      (tester) async {
+    final cart = CartService();
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+        value: cart,
+        child: MaterialApp(
+            home: const Scaffold(bottomNavigationBar: RestaurantCartBar()),
+            routes: {
+              '/cart': (_) => const Scaffold(body: Text('Panier ouvert'))
+            })));
+    expect(find.text('Voir le panier'), findsOneWidget);
+    cart.addItem(item(quantity: 3));
+    await tester.pump();
+    expect(find.text('3'), findsOneWidget);
+    cart.clear();
+    await tester.pump();
+    expect(tester.widget<Badge>(find.byType(Badge)).isLabelVisible, isFalse);
+    await tester.tap(find.text('Voir le panier'));
+    await tester.pumpAndSettle();
+    expect(find.text('Panier ouvert'), findsOneWidget);
+  });
+
   testWidgets('home cart entry uses cart route and live total quantity badge',
       (tester) async {
     final cart = CartService();

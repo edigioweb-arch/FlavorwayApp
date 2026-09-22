@@ -6,11 +6,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import '../models/app_notification_model.dart';
 import '../firebase_options.dart';
 import 'api_client.dart';
 import 'notification_navigation_service.dart';
+import 'courier_session_service.dart';
 
 class NotificationService extends ChangeNotifier {
   static final NotificationService instance = NotificationService._();
@@ -23,6 +25,7 @@ class NotificationService extends ChangeNotifier {
         _auth = auth ?? FirebaseAuth.instance,
         _messaging = messaging ?? FirebaseMessaging.instance {
     _authSubscription = _auth.authStateChanges().listen(_handleAuthChanged);
+    CourierSessionService.instance.addListener(_courierSessionChanged);
   }
 
   final ApiClient _apiClient;
@@ -38,8 +41,15 @@ class NotificationService extends ChangeNotifier {
   String _selectedMessageSound = 'classic';
   bool _initialized = false;
   bool _isBootstrapping = false;
+  bool _bootstrapAgain = false;
+  int _sessionGeneration = 0;
   String? _currentDeviceToken;
   int _unreadCount = 0;
+  Timer? _notificationPoll;
+  bool _fetchingNotifications = false;
+  bool _hasNotificationBaseline = false;
+  final Set<int> _seenNotificationIds = {};
+  String? _lastFirebaseUid;
 
   bool get notificationsEnabled => _notificationsEnabled;
   String get selectedMessageSound => _selectedMessageSound;
@@ -60,7 +70,18 @@ class NotificationService extends ChangeNotifier {
 
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-    await _requestPermissionIfNeeded();
+    try {
+      await _requestPermissionIfNeeded();
+    } catch (_) {}
+    _notificationPoll = Timer.periodic(const Duration(seconds: 15), (_) {
+      final state = WidgetsBinding.instance.lifecycleState;
+      if (state != null && state != AppLifecycleState.resumed) return;
+      if (CourierSessionService.instance.isReady ||
+          (!CourierSessionService.instance.hasSession &&
+              _auth.currentUser != null)) {
+        unawaited(fetchNotifications().catchError((Object _) {}));
+      }
+    });
 
     FirebaseMessaging.onMessage.listen((message) async {
       await _handleIncomingMessage(message, navigate: false, showBanner: true);
@@ -70,7 +91,10 @@ class NotificationService extends ChangeNotifier {
       await _handleIncomingMessage(message, navigate: true, showBanner: false);
     });
 
-    final initialMessage = await _messaging.getInitialMessage();
+    RemoteMessage? initialMessage;
+    try {
+      initialMessage = await _messaging.getInitialMessage();
+    } catch (_) {}
     if (initialMessage != null) {
       await _handleIncomingMessage(
         initialMessage,
@@ -81,29 +105,61 @@ class NotificationService extends ChangeNotifier {
 
     _tokenRefreshSubscription = _messaging.onTokenRefresh.listen((token) async {
       _currentDeviceToken = token;
-      await registerCurrentDeviceToken(tokenOverride: token);
+      try {
+        await registerCurrentDeviceToken(tokenOverride: token);
+      } catch (_) {
+        /* Retry registration on the next authenticated bootstrap. */
+      }
     });
 
     await _handleAuthChanged(_auth.currentUser);
   }
 
+  void _courierSessionChanged() {
+    _sessionGeneration++;
+    _notifications.clear();
+    _seenNotificationIds.clear();
+    _hasNotificationBaseline = false;
+    _unreadCount = 0;
+    notifyListeners();
+    unawaited(_handleAuthChanged(_auth.currentUser));
+  }
+
   Future<void> _handleAuthChanged(User? user) async {
-    if (_isBootstrapping) return;
+    if (_lastFirebaseUid != user?.uid) {
+      _lastFirebaseUid = user?.uid;
+      _sessionGeneration++;
+      _notifications.clear();
+      _seenNotificationIds.clear();
+      _hasNotificationBaseline = false;
+      _unreadCount = 0;
+    }
+    if (_isBootstrapping) {
+      _bootstrapAgain = true;
+      return;
+    }
     _isBootstrapping = true;
 
     try {
-      if (user == null) {
+      if (!CourierSessionService.instance.isReady &&
+          (user == null || CourierSessionService.instance.hasSession)) {
         _notifications.clear();
         _unreadCount = 0;
         notifyListeners();
         return;
       }
 
-      await _requestPermissionIfNeeded();
-      final token = await _messaging.getToken();
-      _currentDeviceToken = token;
-      if (token != null && token.isNotEmpty) {
-        await registerCurrentDeviceToken(tokenOverride: token);
+      // Reading Laravel notifications must not depend on APNs/FCM registration.
+      try {
+        await _requestPermissionIfNeeded();
+        final token = await _messaging.getToken();
+        _currentDeviceToken = token;
+        if (token != null && token.isNotEmpty) {
+          await registerCurrentDeviceToken(tokenOverride: token);
+        }
+      } catch (_) {
+        _debugLog(
+            'Push indisponible ; les notifications Laravel restent accessibles.');
       }
       await fetchNotifications();
     } catch (error) {
@@ -111,29 +167,58 @@ class NotificationService extends ChangeNotifier {
       // On ne bloque pas l'application si FCM n'est pas disponible localement.
     } finally {
       _isBootstrapping = false;
+      if (_bootstrapAgain) {
+        _bootstrapAgain = false;
+        unawaited(_handleAuthChanged(_auth.currentUser));
+      }
     }
   }
 
   Future<void> fetchNotifications() async {
-    final response = await _apiClient.getJson(
-      '/api/v1/notifications',
-      headers: await _authHeaders(),
-    );
+    if (_fetchingNotifications) return;
+    _fetchingNotifications = true;
+    try {
+      final generation = _sessionGeneration;
+      final response = CourierSessionService.instance.isReady
+          ? await CourierSessionService.instance.request('notifications')
+          : await _apiClient.getJson(
+              '/api/v1/notifications',
+              headers: await _authHeaders(),
+            );
 
-    final data = (response['data'] as List?) ?? const [];
-    _notifications
-      ..clear()
-      ..addAll(
-        data.whereType<Map>().map((item) =>
-            AppNotificationModel.fromJson(Map<String, dynamic>.from(item))),
-      );
+      if (generation != _sessionGeneration) return;
+      final data = (response['data'] as List?) ?? const [];
+      _notifications
+        ..clear()
+        ..addAll(
+          data.whereType<Map>().map((item) =>
+              AppNotificationModel.fromJson(Map<String, dynamic>.from(item))),
+        );
 
-    final meta =
-        Map<String, dynamic>.from((response['meta'] as Map?) ?? const {});
-    _unreadCount = (meta['unread_count'] as num?)?.toInt() ??
-        _notifications.where((item) => !item.isRead).length;
+      final fresh = _notifications
+          .where((n) => !n.isRead && !_seenNotificationIds.contains(n.id))
+          .toList();
+      _seenNotificationIds.addAll(_notifications.map((n) => n.id));
+      if (_hasNotificationBaseline &&
+          fresh.isNotEmpty &&
+          _notificationsEnabled) {
+        final newest = fresh.first;
+        NotificationNavigationService.instance.showForegroundBanner(
+            newest.title, newest.body,
+            payload: newest.data);
+        unawaited(_playSelectedSound());
+      }
+      _hasNotificationBaseline = true;
 
-    notifyListeners();
+      final meta =
+          Map<String, dynamic>.from((response['meta'] as Map?) ?? const {});
+      _unreadCount = (meta['unread_count'] as num?)?.toInt() ??
+          _notifications.where((item) => !item.isRead).length;
+
+      notifyListeners();
+    } finally {
+      _fetchingNotifications = false;
+    }
   }
 
   Future<void> markAllAsRead() async {
@@ -170,6 +255,15 @@ class NotificationService extends ChangeNotifier {
         tokenOverride ?? _currentDeviceToken ?? await _messaging.getToken();
     if (token == null || token.isEmpty) return;
 
+    if (CourierSessionService.instance.hasSession) {
+      if (!CourierSessionService.instance.isReady) return;
+      await CourierSessionService.instance.request('device-tokens', body: {
+        'token': token,
+        'platform': _platformName,
+      });
+      _currentDeviceToken = token;
+      return;
+    }
     await _apiClient.postJson(
       '/api/v1/device-tokens',
       headers: await _authHeaders(),
@@ -189,6 +283,11 @@ class NotificationService extends ChangeNotifier {
     if (token == null || token.isEmpty) return;
 
     try {
+      if (CourierSessionService.instance.isReady) {
+        await CourierSessionService.instance
+            .request('device-tokens/deactivate', body: {'token': token});
+        return;
+      }
       await _apiClient.postJson(
         '/api/v1/device-tokens/deactivate',
         headers: await _authHeaders(),
@@ -281,6 +380,12 @@ class NotificationService extends ChangeNotifier {
     required bool navigate,
     required bool showBanner,
   }) async {
+    final courierDestination = message.data['destination'] == 'courier';
+    // Never display one role's foreground alerts in the other role's session.
+    if (!navigate &&
+        courierDestination != CourierSessionService.instance.isReady) {
+      return;
+    }
     if (navigate) {
       NotificationNavigationService.instance
           .handlePayload(Map<String, dynamic>.from(message.data));
@@ -291,6 +396,7 @@ class NotificationService extends ChangeNotifier {
       return;
     }
 
+    if (parsed.id > 0 && !_seenNotificationIds.add(parsed.id)) return;
     _notifications.insert(0, parsed);
     if (!parsed.isRead) {
       _unreadCount += 1;
@@ -316,7 +422,7 @@ class NotificationService extends ChangeNotifier {
     }
 
     return AppNotificationModel(
-      id: int.tryParse((data['notification_id'] ?? '0').toString()) ??
+      id: int.tryParse((data['notification_id'] ?? '').toString()) ??
           DateTime.now().millisecondsSinceEpoch,
       type: (data['type'] ?? 'generic').toString(),
       title: title,
@@ -351,6 +457,8 @@ class NotificationService extends ChangeNotifier {
 
   @override
   void dispose() {
+    CourierSessionService.instance.removeListener(_courierSessionChanged);
+    _notificationPoll?.cancel();
     _authSubscription?.cancel();
     _tokenRefreshSubscription?.cancel();
     _audioPlayer.dispose();

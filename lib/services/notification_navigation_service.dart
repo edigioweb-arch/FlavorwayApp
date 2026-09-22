@@ -45,6 +45,16 @@ class NotificationNavigationService {
     final type = (payload['type'] ?? '').toString();
     final route = payload['route'];
     final destination = payload['destination'];
+    if (destination == 'courier') {
+      final number = payload['order_number'];
+      if (number is String && RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(number)) {
+        navigator
+            .pushNamed('/courier/order', arguments: {'order_number': number});
+      } else {
+        navigator.pushNamed('/courier/login');
+      }
+      return;
+    }
     if (destination != null && destination != 'client') {
       navigator.pushNamed('/notifications');
       return;

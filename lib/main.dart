@@ -35,6 +35,8 @@ import 'screens/restaurant_owner/edit_restaurant_screen.dart';
 import 'screens/reservations_screen.dart';
 import 'screens/restaurant_owner/edit_gallery_screen.dart';
 import 'widgets/auth_gate.dart';
+import 'services/courier_session_service.dart';
+import 'screens/courier/courier_screens.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,6 +44,7 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  await CourierSessionService.instance.restore();
   await NotificationService.instance.initialize();
 
   // UserAuthService est placé en provider racine DIRECT, au-dessus de tout,
@@ -101,13 +104,26 @@ class FlavorWayApp extends StatelessWidget {
 
           // AuthGate utilise Consumer<UserAuthService> qui remonte
           // jusqu'au provider racine dans runApp().
-          home: const AuthGate(
-            loginWidget: WelcomePage(),
-            verificationWidget: EmailVerificationScreen(),
-            homeWidget: HomeScreen(),
+          home: AnimatedBuilder(
+            animation: CourierSessionService.instance,
+            builder: (_, __) => CourierSessionService.instance.hasSession
+                ? const CourierGate()
+                : const AuthGate(
+                    loginWidget: WelcomePage(),
+                    verificationWidget: EmailVerificationScreen(),
+                    homeWidget: HomeScreen(),
+                  ),
           ),
 
           routes: {
+            '/courier/login': (_) => const CourierGate(),
+            '/courier/order': (context) {
+              final args = ModalRoute.of(context)?.settings.arguments;
+              final reference = args is Map
+                  ? args['order_number']?.toString()
+                  : args?.toString();
+              return CourierGate(orderReference: reference);
+            },
             '/login': (context) => const LoginScreen(),
             '/signup': (context) => const SignUpScreen(),
             '/forgot-password': (context) => const ForgotPasswordScreen(),

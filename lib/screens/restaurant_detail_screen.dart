@@ -7,6 +7,7 @@ import '../services/restaurant_service.dart';
 import 'product_detail_screen.dart';
 import '../widgets/restaurant_gallery_lightbox.dart';
 import '../widgets/product_quick_add.dart';
+import '../widgets/cart_button.dart';
 
 class RestaurantDetailScreen extends StatefulWidget {
   const RestaurantDetailScreen({super.key});
@@ -113,6 +114,7 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
               ),
             ),
           ),
+          bottomNavigationBar: const RestaurantCartBar(),
           body: RefreshIndicator(
             onRefresh: () => restaurantService.loadRestaurantDetail(
               restaurant.id,

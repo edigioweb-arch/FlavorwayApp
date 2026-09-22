@@ -103,7 +103,11 @@ void main() {
       await mount(tester, app(navigation, calls));
       navigation.handlePayload(invalid);
       await tester.pumpAndSettle();
-      expect(calls.single.name, '/notifications');
+      expect(
+          calls.single.name,
+          invalid['destination'] == 'courier'
+              ? '/courier/order'
+              : '/notifications');
     });
   }
   testWidgets(

@@ -114,6 +114,16 @@ class _WelcomePageState extends State<WelcomePage> {
             ),
             Positioned(
               top: 14,
+              left: 12,
+              width: MediaQuery.sizeOf(context).width - 120,
+              child: TextButton.icon(
+                onPressed: () => Navigator.pushNamed(context, '/courier/login'),
+                icon: const Icon(Icons.delivery_dining),
+                label: const Text('Se connecter comme livreur'),
+              ),
+            ),
+            Positioned(
+              top: 14,
               right: 18,
               child: FadeInDown(
                 duration: const Duration(milliseconds: 500),

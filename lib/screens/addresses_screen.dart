@@ -245,8 +245,10 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     const SizedBox(height: 16),
                     TextField(
                       controller: labelController,
-                      decoration:
-                          const InputDecoration(labelText: 'Nom de l’adresse'),
+                      decoration: const InputDecoration(
+                          labelText: 'Adresse ou repère',
+                          hintText:
+                              'Rue, numéro, bâtiment ou lieu de livraison'),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<CityModel>(
@@ -315,8 +317,10 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: addressController,
-                      decoration:
-                          const InputDecoration(labelText: 'Adresse détaillée'),
+                      decoration: const InputDecoration(
+                          labelText: 'Précisions (facultatif)',
+                          hintText:
+                              'Étage, portail, indications pour le livreur'),
                       maxLines: 2,
                     ),
                     const SizedBox(height: 16),
@@ -344,42 +348,49 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed:
-                            selectedCity == null || saving || loadingZones
-                                ? null
-                                : () async {
-                                    if (labelController.text.trim().isEmpty ||
-                                        addressController.text.trim().isEmpty) {
-                                      setModalState(() => editorError =
-                                          'Renseignez le nom et l’adresse détaillée.');
-                                      return;
-                                    }
-                                    setModalState(() {
-                                      saving = true;
-                                      editorError = null;
-                                    });
-                                    try {
-                                      await _saveAddress(
-                                        index: index,
-                                        label: labelController.text.trim(),
-                                        address: addressController.text.trim(),
-                                        city: selectedCity!,
-                                        area: selectedArea,
-                                        latitude: latitude,
-                                        longitude: longitude,
-                                      );
+                        onPressed: selectedCity == null ||
+                                saving ||
+                                loadingZones
+                            ? null
+                            : () async {
+                                if (labelController.text.trim().isEmpty &&
+                                    addressController.text.trim().isEmpty) {
+                                  setModalState(() => editorError =
+                                      'Indiquez une adresse ou un repère pour le livreur.');
+                                  return;
+                                }
+                                setModalState(() {
+                                  saving = true;
+                                  editorError = null;
+                                });
+                                try {
+                                  await _saveAddress(
+                                    index: index,
+                                    label:
+                                        labelController.text.trim().isNotEmpty
+                                            ? labelController.text.trim()
+                                            : addressController.text.trim(),
+                                    address:
+                                        addressController.text.trim().isNotEmpty
+                                            ? addressController.text.trim()
+                                            : labelController.text.trim(),
+                                    city: selectedCity!,
+                                    area: selectedArea,
+                                    latitude: latitude,
+                                    longitude: longitude,
+                                  );
 
-                                      if (!context.mounted) return;
-                                      Navigator.pop(context);
-                                    } catch (_) {
-                                      if (context.mounted)
-                                        setModalState(() {
-                                          saving = false;
-                                          editorError =
-                                              'Adresse non enregistrée. Réessayez.';
-                                        });
-                                    }
-                                  },
+                                  if (!context.mounted) return;
+                                  Navigator.pop(context);
+                                } catch (_) {
+                                  if (context.mounted)
+                                    setModalState(() {
+                                      saving = false;
+                                      editorError =
+                                          'Adresse non enregistrée. Réessayez.';
+                                    });
+                                }
+                              },
                         child: Text(index == null ? 'Ajouter' : 'Enregistrer'),
                       ),
                     ),
