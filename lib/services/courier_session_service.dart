@@ -28,6 +28,8 @@ class CourierSessionService extends ChangeNotifier {
   final ApiClient _api;
   final CourierTokenStore _store;
   String? _token;
+  int _credentialRevision = 0;
+  int get credentialRevision => _credentialRevision;
   Map<String, dynamic>? profile;
   String? restoreError;
   bool get hasSession => _token != null;
@@ -75,6 +77,7 @@ class CourierSessionService extends ChangeNotifier {
     final next = data['token'] as String;
     await _store.write(next);
     _token = next;
+    _credentialRevision++;
     profile = Map<String, dynamic>.from(data['profile'] as Map);
     restoreError = null;
     notifyListeners();
@@ -120,6 +123,12 @@ class CourierSessionService extends ChangeNotifier {
     }
   }
 
+  Future<void> refreshProfile() async {
+    final response = await request('profile');
+    profile = Map<String, dynamic>.from(response['data'] as Map);
+    notifyListeners();
+  }
+
   Future<void> updatePhone(String phone) async {
     final response = await request('profile', body: {'phone': phone.trim()});
     profile = Map<String, dynamic>.from(response['data'] as Map);
@@ -141,6 +150,7 @@ class CourierSessionService extends ChangeNotifier {
 
   Future<void> _forget() async {
     _token = null;
+    _credentialRevision++;
     profile = null;
     restoreError = null;
     await _store.clear();

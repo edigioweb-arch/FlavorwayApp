@@ -7,8 +7,15 @@ import '../services/api_client.dart';
 import '../services/restaurant_service.dart';
 import '../services/reservation_service.dart';
 
+String _shortReservationNumber(String reference) {
+  final match = RegExp(r'^RES-\d{8}-(\d+)$').firstMatch(reference);
+  return match?.group(1) ?? reference;
+}
+
 class ReservationsScreen extends StatefulWidget {
-  const ReservationsScreen({super.key});
+  const ReservationsScreen({super.key, this.initialRestaurantId});
+
+  final String? initialRestaurantId;
 
   @override
   State<ReservationsScreen> createState() => _ReservationsScreenState();
@@ -24,7 +31,11 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       ReservationService.instance.fetchReservations(scope: _scope);
+      if (widget.initialRestaurantId != null) {
+        _openCreateReservationSheet(context);
+      }
     });
   }
 
@@ -111,7 +122,8 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                                     ElevatedButton(
                                       onPressed: _refresh,
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: orangeFlavor,
+                                        backgroundColor: violetFlavor,
+                                        foregroundColor: Colors.white,
                                       ),
                                       child: const Text('Réessayer'),
                                     ),
@@ -166,6 +178,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openCreateReservationSheet(context),
         backgroundColor: orangeFlavor,
+        foregroundColor: Colors.white,
         icon: const Icon(Icons.add),
         label: const Text('Réserver'),
       ),
@@ -216,11 +229,21 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
       return;
     }
 
-    final restaurantId = ValueNotifier<String>(restaurants.first.id);
+    final selectedId = widget.initialRestaurantId;
+    if (selectedId != null && !restaurants.any((r) => r.id == selectedId)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Ce restaurant n’est pas disponible pour réserver.'),
+      ));
+      return;
+    }
+    final restaurantId =
+        ValueNotifier<String>(selectedId ?? restaurants.first.id);
     final dateController = TextEditingController(
         text: DateTime.now().toIso8601String().split('T').first);
     final timeController = TextEditingController(text: '20:00');
-    final guestsController = TextEditingController(text: '2');
+    int guests = 2;
+    final nameController = TextEditingController();
+    String? nameError;
     final notesController = TextEditingController();
     bool submitting = false;
 
@@ -254,6 +277,26 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
+                    TextField(
+                      controller: nameController,
+                      enabled: !submitting,
+                      textCapitalization: TextCapitalization.words,
+                      autofillHints: const [AutofillHints.name],
+                      maxLength: 255,
+                      decoration: InputDecoration(
+                        labelText: 'Nom de la personne *',
+                        hintText: 'Prénom et nom',
+                        border: const OutlineInputBorder(),
+                        errorText: nameError,
+                        counterText: '',
+                      ),
+                      onChanged: (_) {
+                        if (nameError != null) {
+                          setModalState(() => nameError = null);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
                     ValueListenableBuilder<String>(
                       valueListenable: restaurantId,
                       builder: (context, value, _) {
@@ -296,12 +339,42 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: guestsController,
-                      keyboardType: TextInputType.number,
+                    InputDecorator(
                       decoration: const InputDecoration(
                         labelText: 'Nombre de personnes',
                         border: OutlineInputBorder(),
+                      ),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            tooltip: 'Retirer une personne',
+                            color: violetFlavor,
+                            onPressed: submitting || guests <= 1
+                                ? null
+                                : () => setModalState(() => guests--),
+                            icon: const Icon(Icons.remove_circle_outline),
+                          ),
+                          Expanded(
+                            child: Semantics(
+                              liveRegion: true,
+                              label: '$guests personnes',
+                              child: Text(
+                                '$guests',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    fontSize: 20, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Ajouter une personne',
+                            color: violetFlavor,
+                            onPressed: submitting || guests >= 20
+                                ? null
+                                : () => setModalState(() => guests++),
+                            icon: const Icon(Icons.add_circle_outline),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -321,6 +394,11 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                         onPressed: submitting
                             ? null
                             : () async {
+                                if (nameController.text.trim().isEmpty) {
+                                  setModalState(() => nameError =
+                                      'Renseignez le nom de la personne.');
+                                  return;
+                                }
                                 setModalState(() => submitting = true);
                                 try {
                                   final created = await ReservationService
@@ -329,9 +407,8 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                                     restaurantId: int.parse(restaurantId.value),
                                     reservationDate: dateController.text.trim(),
                                     reservationTime: timeController.text.trim(),
-                                    partySize:
-                                        int.tryParse(guestsController.text) ??
-                                            0,
+                                    partySize: guests,
+                                    customerName: nameController.text.trim(),
                                     notes: notesController.text,
                                   );
 
@@ -358,7 +435,8 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                                 }
                               },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: orangeFlavor,
+                          backgroundColor: violetFlavor,
+                          foregroundColor: Colors.white,
                         ),
                         child: submitting
                             ? const SizedBox(
@@ -424,7 +502,8 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                 ),
               ),
               const SizedBox(height: 14),
-              _detailLine('Numéro', detail.reservationNumber),
+              _detailLine(
+                  'Numéro', _shortReservationNumber(detail.reservationNumber)),
               _detailLine('Restaurant', detail.restaurantName),
               _detailLine('Date', detail.reservationDate),
               _detailLine('Heure', detail.reservationTime),
@@ -443,6 +522,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                   onPressed: () => Navigator.maybePop(context),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: orangeFlavor,
+                    foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(90),
@@ -535,6 +615,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: orangeFlavor,
+                foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(90),
                 ),
@@ -630,7 +711,7 @@ class _ReservationCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            reservation.reservationNumber,
+            _shortReservationNumber(reservation.reservationNumber),
             style: GoogleFonts.poppins(
               color: Colors.grey.shade500,
               fontSize: 12,
@@ -652,6 +733,7 @@ class _ReservationCard extends StatelessWidget {
                     onPressed: onCancel,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: orangeFlavor,
+                      foregroundColor: Colors.white,
                     ),
                     child: const Text('Annuler'),
                   ),

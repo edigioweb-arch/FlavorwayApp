@@ -34,7 +34,8 @@ class ReservationService extends ChangeNotifier {
     }
   }
 
-  Future<List<ReservationModel>> fetchReservations({String? scope, String? status}) async {
+  Future<List<ReservationModel>> fetchReservations(
+      {String? scope, String? status}) async {
     _state = ReservationLoadState.loading;
     _errorMessage = null;
     notifyListeners();
@@ -52,7 +53,8 @@ class ReservationService extends ChangeNotifier {
       final data = (response['data'] as List?) ?? const [];
       _reservations = data
           .whereType<Map>()
-          .map((item) => ReservationModel.fromJson(Map<String, dynamic>.from(item)))
+          .map((item) =>
+              ReservationModel.fromJson(Map<String, dynamic>.from(item)))
           .toList(growable: false);
       _state = ReservationLoadState.success;
       notifyListeners();
@@ -77,6 +79,7 @@ class ReservationService extends ChangeNotifier {
     required String reservationDate,
     required String reservationTime,
     required int partySize,
+    String? customerName,
     String? notes,
     String? specialRequests,
   }) async {
@@ -87,10 +90,12 @@ class ReservationService extends ChangeNotifier {
         'reservation_date': reservationDate,
         'reservation_time': reservationTime,
         'party_size': partySize,
+        if (customerName != null) 'customer_name': customerName.trim(),
         'notes': (notes == null || notes.trim().isEmpty) ? null : notes.trim(),
-        'special_requests': (specialRequests == null || specialRequests.trim().isEmpty)
-            ? null
-            : specialRequests.trim(),
+        'special_requests':
+            (specialRequests == null || specialRequests.trim().isEmpty)
+                ? null
+                : specialRequests.trim(),
       },
       headers: await _authHeaders(),
     );
@@ -101,12 +106,14 @@ class ReservationService extends ChangeNotifier {
 
     _reservations = [reservation, ..._reservations];
     notifyListeners();
-    NotificationService.instance.addReservationNotification(reservation.restaurantName);
+    NotificationService.instance
+        .addReservationNotification(reservation.restaurantName);
 
     return reservation;
   }
 
-  Future<ReservationModel?> fetchReservationDetail(String reservationNumber) async {
+  Future<ReservationModel?> fetchReservationDetail(
+      String reservationNumber) async {
     final response = await _apiClient.getJson(
       '/api/v1/reservations/$reservationNumber',
       headers: await _authHeaders(),
@@ -117,7 +124,8 @@ class ReservationService extends ChangeNotifier {
       return null;
     }
 
-    final reservation = ReservationModel.fromJson(Map<String, dynamic>.from(data));
+    final reservation =
+        ReservationModel.fromJson(Map<String, dynamic>.from(data));
     _upsert(reservation);
     notifyListeners();
     return reservation;
@@ -130,7 +138,8 @@ class ReservationService extends ChangeNotifier {
     final response = await _apiClient.postJson(
       '/api/v1/reservations/${reservation.reservationNumber}/cancel',
       body: {
-        'reason': (reason == null || reason.trim().isEmpty) ? null : reason.trim(),
+        'reason':
+            (reason == null || reason.trim().isEmpty) ? null : reason.trim(),
       },
       headers: await _authHeaders(),
     );

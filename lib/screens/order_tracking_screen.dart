@@ -308,6 +308,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   }
 
   Widget _buildTimelineCard(OrderModel order) {
+    final visibleTimeline = order.timeline
+        .where((step) => step.updatedBy != 'assignment')
+        .toList(growable: false);
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -317,14 +320,14 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 12),
-          if (order.timeline.isEmpty)
+          if (visibleTimeline.isEmpty)
             Text(
               'Aucun historique disponible pour cette commande.',
               style: GoogleFonts.inter(
                   color: const Color(0xFF6F7390), fontSize: 13),
             )
           else
-            ...order.timeline.map((step) => Padding(
+            ...visibleTimeline.map((step) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,

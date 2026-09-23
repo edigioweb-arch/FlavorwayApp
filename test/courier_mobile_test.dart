@@ -31,6 +31,8 @@ class CourierServer {
   bool failAction = false;
   bool expired = false;
   bool restaurant = false;
+  String phone = '123';
+  final readNotifications = <int>{};
   String status = 'ready';
   String payment = 'pending';
   Map<String, dynamic> get profile => {
@@ -39,7 +41,7 @@ class CourierServer {
         'last_name': 'Livreuse',
         'name': 'Lina Livreuse',
         'email': 'courier@test.local',
-        'phone': '123',
+        'phone': phone,
         'role': 'courier',
         'courier_type': restaurant ? 'restaurant' : 'flavorway',
         'status': 'active',
@@ -54,8 +56,12 @@ class CourierServer {
         'restaurant': {'name': 'Restaurant réel', 'address': 'Rue restaurant'},
         'delivery_address': {
           'address_line': 'Rue client',
-          'city': 'Brazzaville'
+          'city': 'Brazzaville',
+          'instructions': 'Portail bleu',
+          'landmark': 'École',
         },
+        'notes': 'Appeler en arrivant',
+        'client_phone': '+242060000001',
         'status': status,
         'payment_method': 'cash',
         'payment_status': payment,
@@ -124,20 +130,41 @@ class CourierServer {
               'active_orders': 7,
               'today_orders': 9,
               'completed_deliveries': 321,
-              'cash_due': 11000
+              'cash_due': payment == 'paid' ? 0 : 11000,
+              'collections_count':
+                  status == 'delivered' && payment != 'paid' ? 1 : 0,
+              'collections_due':
+                  status == 'delivered' && payment != 'paid' ? 11000 : 0,
+              'collections':
+                  status == 'delivered' && payment != 'paid' ? [order] : [],
             }
           });
-        if (path == 'notifications')
+        if (path.startsWith('notifications/') && request.method == 'POST') {
+          readNotifications.add(int.parse(path.split('/')[1]));
+          return json({'success': true});
+        }
+        if (path == 'notifications') {
+          final page = request.url.queryParameters['page'] ?? '1';
+          final id = page == '1' ? 1 : 2;
           return json({
             'data': [
               {
-                'id': 1,
-                'title': 'Commande prête',
+                'id': id,
+                'title':
+                    page == '1' ? 'Commande prête' : 'Assignation précédente',
                 'body': 'SERVER-51',
+                'is_read': readNotifications.contains(id),
+                'created_at': '2026-09-22T10:00:00Z',
                 'data': {'destination': 'courier', 'order_number': 'SERVER-51'}
               }
-            ]
+            ],
+            'meta': {
+              'last_page': 2,
+              'current_page': int.parse(page),
+              'unread_count': 2 - readNotifications.length
+            },
           });
+        }
         if (path == 'orders' || path == 'history')
           return json({
             'data': [order],
@@ -434,6 +461,7 @@ void main() {
     expect(server.payment, 'pending');
     await tester.tap(find.text('Cash reçu'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Paiement : Payé'), 300);
     expect(find.text('Paiement : Payé'), findsOneWidget);
     expect(find.text('Confirmer l’encaissement'), findsNothing);
   });
@@ -496,5 +524,183 @@ void main() {
     await mount(tester, CourierNotificationsScreen(session: server.session));
     expect(find.text('Commande prête'), findsOneWidget);
     expect(server.calls.last.url.path, '/api/v1/courier/notifications');
+  });
+
+  testWidgets(
+      'delivered unpaid cash remains visible in active list and history',
+      (tester) async {
+    final server = CourierServer()..status = 'delivered';
+    await server.session.login('a@b.c', 'old');
+    for (final history in [false, true]) {
+      await mount(
+          tester,
+          Scaffold(
+              body: CourierOrdersScreen(
+                  key: ValueKey(history),
+                  session: server.session,
+                  history: history)));
+      expect(find.text('Cash à encaisser : 11000 FCFA'), findsOneWidget);
+    }
+    server.payment = 'paid';
+    await tester
+        .widget<RefreshIndicator>(find.byType(RefreshIndicator))
+        .onRefresh();
+    await tester.pumpAndSettle();
+    expect(find.text('Cash à encaisser : 11000 FCFA'), findsNothing);
+  });
+
+  testWidgets('dashboard shows pending collections and opens server order',
+      (tester) async {
+    final server = CourierServer()..status = 'delivered';
+    await server.session.login('a@b.c', 'old');
+    await mount(tester, CourierGate(session: server.session));
+    expect(find.text('Encaissements à confirmer'), findsOneWidget);
+    await tester.ensureVisible(find.text('SERVER-51'));
+    expect(find.text('Cash à encaisser : 11000 FCFA'), findsOneWidget);
+    await tester.tap(find.text('SERVER-51'));
+    await tester.pumpAndSettle();
+    expect(server.calls.any((r) => r.url.path.endsWith('/orders/SERVER-51')),
+        isTrue);
+    expect(find.text('Confirmer l’encaissement'), findsOneWidget);
+  });
+
+  testWidgets('active list polls every 30 seconds and pauses in background',
+      (tester) async {
+    final server = CourierServer();
+    await server.session.login('a@b.c', 'old');
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await mount(
+        tester, Scaffold(body: CourierOrdersScreen(session: server.session)));
+    int calls() =>
+        server.calls.where((r) => r.url.path.endsWith('/orders')).length;
+    expect(calls(), 1);
+    await tester.pump(const Duration(seconds: 29));
+    expect(calls(), 1);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(calls(), 2);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump(const Duration(seconds: 60));
+    expect(calls(), 2);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  });
+
+  testWidgets('dashboard polling updates cash and stops under another route',
+      (tester) async {
+    final server = CourierServer()..status = 'delivered';
+    await server.session.login('a@b.c', 'old');
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await mount(tester, CourierGate(session: server.session));
+    server.payment = 'paid';
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pumpAndSettle();
+    expect(find.text('Aucun encaissement en attente.'), findsOneWidget);
+    int calls() =>
+        server.calls.where((r) => r.url.path.endsWith('/dashboard')).length;
+    final count = calls();
+    await tester.tap(find.byTooltip('Notifications : 2 non lues'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 60));
+    await tester.pumpAndSettle();
+    expect(calls(), count);
+  });
+
+  testWidgets('bell count updates after notification is marked read',
+      (tester) async {
+    final server = CourierServer();
+    await server.session.login('a@b.c', 'old');
+    await mount(tester, CourierGate(session: server.session));
+    await tester.tap(find.byTooltip('Notifications : 2 non lues'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Non lue'), findsOneWidget);
+    await tester.tap(find.byTooltip('Marquer comme lue'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Lue ·'), findsOneWidget);
+    expect(find.byTooltip('Marquer comme lue'), findsNothing);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Notifications : 1 non lues'), findsOneWidget);
+  });
+
+  testWidgets('notification pagination and refresh use Laravel page parameter',
+      (tester) async {
+    final server = CourierServer();
+    await server.session.login('a@b.c', 'old');
+    await mount(tester, CourierNotificationsScreen(session: server.session));
+    await tester.tap(find.text('Suivant'));
+    await tester.pumpAndSettle();
+    expect(find.text('Assignation précédente'), findsOneWidget);
+    expect(server.calls.last.url.queryParameters['page'], '2');
+    server.readNotifications.add(2);
+    await tester
+        .widget<RefreshIndicator>(find.byType(RefreshIndicator))
+        .onRefresh();
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Lue ·'), findsOneWidget);
+    await tester.tap(find.text('Précédent'));
+    await tester.pumpAndSettle();
+    expect(find.text('Commande prête'), findsOneWidget);
+  });
+
+  testWidgets(
+      'notification tap marks read and opens exact server order reference',
+      (tester) async {
+    final server = CourierServer();
+    await server.session.login('a@b.c', 'old');
+    final routes = <RouteSettings>[];
+    await tester.pumpWidget(MaterialApp(
+      navigatorKey: NotificationNavigationService.instance.navigatorKey,
+      home: CourierNotificationsScreen(session: server.session),
+      onGenerateRoute: (settings) {
+        routes.add(settings);
+        return MaterialPageRoute(
+            builder: (_) => const Scaffold(body: Text('Order target')));
+      },
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Commande prête'));
+    await tester.pumpAndSettle();
+    expect(server.readNotifications, contains(1));
+    expect(routes.single.name, '/courier/order');
+    expect((routes.single.arguments as Map)['order_number'], 'SERVER-51');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'detail shows delivery instructions landmark note and authorized phone',
+      (tester) async {
+    final server = CourierServer();
+    await server.session.login('a@b.c', 'old');
+    await mount(tester,
+        CourierGate(session: server.session, orderReference: 'SERVER-51'));
+    await tester.scrollUntilVisible(find.text('Portail bleu'), 300);
+    expect(find.text('Portail bleu'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('+242060000001'), 200);
+    expect(find.text('École'), findsOneWidget);
+    expect(find.text('Appeler en arrivant'), findsOneWidget);
+    expect(find.text('+242060000001'), findsOneWidget);
+  });
+
+  testWidgets('profile fetches admin updates on opening and on pull refresh',
+      (tester) async {
+    final server = CourierServer();
+    await server.session.login('a@b.c', 'old');
+    server.phone = '987';
+    server.restaurant = true;
+    final revision = server.session.credentialRevision;
+    await mount(
+        tester, Scaffold(body: CourierProfileScreen(session: server.session)));
+    expect(find.text('Restaurant associé'), findsOneWidget);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '987');
+    expect(server.calls.last.url.path, '/api/v1/courier/profile');
+    expect(server.session.credentialRevision, revision);
+    server.phone = '456';
+    await tester
+        .widget<RefreshIndicator>(find.byType(RefreshIndicator))
+        .onRefresh();
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '456');
   });
 }

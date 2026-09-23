@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/restaurant_model.dart';
 import '../services/restaurant_service.dart';
 import 'product_detail_screen.dart';
+import 'reservations_screen.dart';
 import '../widgets/restaurant_gallery_lightbox.dart';
 import '../widgets/product_quick_add.dart';
 import '../widgets/cart_button.dart';
@@ -267,12 +269,84 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
                       ),
                   ],
                 ),
+                const SizedBox(height: 16),
+                Center(
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => ReservationsScreen(
+                                    initialRestaurantId: restaurant.id,
+                                  )),
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: orangeFlavor,
+                          foregroundColor: Colors.white,
+                          shape: const StadiumBorder(),
+                          minimumSize: const Size(0, 40),
+                          textStyle: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w500),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
+                        ),
+                        icon:
+                            const Icon(Icons.calendar_month_outlined, size: 16),
+                        label: const Text('Réserver une table',
+                            textAlign: TextAlign.center),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: restaurant.phone.trim().isEmpty
+                            ? null
+                            : () => _callRestaurant(restaurant.phone),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: violetFlavor,
+                          side: const BorderSide(color: violetFlavor),
+                          shape: const StadiumBorder(),
+                          minimumSize: const Size(0, 40),
+                          textStyle: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w500),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
+                        ),
+                        icon: const Icon(Icons.phone_outlined, size: 16),
+                        label: Text(
+                            restaurant.phone.trim().isEmpty
+                                ? 'Numéro indisponible'
+                                : 'Appeler le restaurant',
+                            textAlign: TextAlign.center),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _callRestaurant(String phone) async {
+    final number = phone.trim().replaceAll(RegExp(r'[\s().-]'), '');
+    var opened = false;
+    if (RegExp(r'^\+?[0-9]+$').hasMatch(number)) {
+      try {
+        opened = await launchUrl(Uri(scheme: 'tel', path: number),
+            mode: LaunchMode.externalApplication);
+      } catch (_) {
+        // Some devices, including iOS simulators, have no phone application.
+      }
+    }
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            'Impossible d’ouvrir le téléphone sur cet appareil. Numéro du restaurant : $phone'),
+      ));
+    }
   }
 
   Widget _buildCategoryBlock(

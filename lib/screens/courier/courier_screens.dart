@@ -539,18 +539,7 @@ class _CourierDashboardState extends State<CourierDashboardScreen> {
               'Historique',
               'Profil livreur'
             ][_tab]),
-            actions: [
-              IconButton(
-                  tooltip: 'Notifications',
-                  icon: const Icon(Icons.notifications_outlined),
-                  onPressed: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => _ProtectedCourierPage(
-                            session: widget.session,
-                            child: CourierNotificationsScreen(
-                                session: widget.session))));
-                  })
-            ]),
+            actions: [_CourierNotificationBell(session: widget.session)]),
         body: switch (_tab) {
           0 => _CourierDashboardData(
               session: widget.session,
@@ -649,6 +638,7 @@ class _CourierDashboardData extends StatelessWidget {
   Widget build(BuildContext context) => _RemoteData(
       session: session,
       path: 'dashboard',
+      refreshInterval: const Duration(seconds: 30),
       builder: (context, response, reload) {
         final data = response['data'] as Map;
         final profile = session.profile!;
@@ -722,6 +712,39 @@ class _CourierDashboardData extends StatelessWidget {
                                             fontWeight: FontWeight.bold)),
                                   ])),
                             ]))),
+                  _section(
+                      'Encaissements à confirmer',
+                      [
+                        if ((data['collections_count'] as num? ?? 0) == 0)
+                          const Text('Aucun encaissement en attente.'),
+                        if ((data['collections_count'] as num? ?? 0) > 0) ...[
+                          Text(
+                              '${data['collections_count']} livraison(s) · ${_money(data['collections_due'])}',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
+                          for (final order
+                              in (data['collections'] as List? ?? []))
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text('${order['order_number']}'),
+                              subtitle: _cashBadge(order),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () async {
+                                await Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                        builder: (_) => CourierGate(
+                                            session: session,
+                                            orderReference:
+                                                '${order['order_number']}')));
+                                if (context.mounted) await reload();
+                              },
+                            ),
+                          TextButton(
+                              onPressed: openOrders,
+                              child: const Text('Voir tous les encaissements')),
+                        ],
+                      ],
+                      color: const Color(0xFFFFEFDF)),
                   FilledButton(
                       onPressed: openOrders,
                       child: const Text('Voir mes commandes assignées')),
@@ -746,6 +769,7 @@ class _CourierOrdersState extends State<CourierOrdersScreen> {
       key: ValueKey('$_page-$_reload'),
       session: widget.session,
       path: widget.history ? 'history' : 'orders',
+      refreshInterval: Duration(seconds: widget.history ? 60 : 30),
       query: {'page': '$_page'},
       builder: (context, response, reload) {
         final orders = (response['data'] as List).cast<Map>();
@@ -764,8 +788,13 @@ class _CourierOrdersState extends State<CourierOrdersScreen> {
                     Card(
                         child: ListTile(
                       title: Text('${order['order_number']}'),
-                      subtitle: Text(
-                          '${order['restaurant']?['name'] ?? ''}\n${_label(order['status'])} · ${_money(order['total'])}'),
+                      subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                                '${order['restaurant']?['name'] ?? ''}\n${_label(order['status'])} · ${_money(order['total'])}'),
+                            _cashBadge(order),
+                          ]),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () async {
                         await Navigator.of(context).push(MaterialPageRoute(
@@ -873,6 +902,7 @@ class _CourierOrderState extends State<CourierOrderScreen> {
                       Text(_label(order['status']),
                           style: Theme.of(context).textTheme.headlineSmall),
                       const SizedBox(height: 16),
+                      _cashBadge(order),
                       if (['confirmed', 'preparing'].contains(order['status']))
                         _section(
                             'En attente du restaurant',
@@ -962,7 +992,20 @@ class _CourierOrderState extends State<CourierOrderScreen> {
                               address['delivery_zone_area_name'],
                             ]
                                 .where((e) => e != null && '$e'.isNotEmpty)
-                                .join(', ')))
+                                .join(', '))),
+                        for (final entry in {
+                          'Consignes client': address['instructions'],
+                          'Repère': address['landmark'],
+                          'Note de livraison':
+                              address['delivery_note'] ?? order['notes'],
+                          'Téléphone client': order['client_phone'],
+                        }.entries)
+                          if (entry.value != null &&
+                              '${entry.value}'.trim().isNotEmpty)
+                            ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(entry.key),
+                                subtitle: Text('${entry.value}')),
                       ]),
                       _section('Articles à livrer', [
                         for (final item in items)
@@ -994,12 +1037,7 @@ class _CourierOrderState extends State<CourierOrderScreen> {
                             Text(_label(order['payment_method'])),
                             Text(
                                 'Paiement : ${_label(order['payment_status'])}'),
-                            if (order['payment_method'] == 'cash' &&
-                                (num.tryParse('${order['cash_due']}') ?? 0) > 0)
-                              Text(
-                                  'Cash à encaisser : ${_money(order['cash_due'])}',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold)),
+                            _cashBadge(order),
                           ],
                           color: const Color(0xFFFFF1E3)),
                     ]));
@@ -1018,6 +1056,19 @@ class _CourierProfileState extends State<CourierProfileScreen> {
       text: widget.session.profile?['phone']?.toString() ?? '');
   bool _busy = false;
   String? _message;
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() => _run(() async {
+        await widget.session.refreshProfile();
+        if (mounted) {
+          _phone.text = widget.session.profile?['phone']?.toString() ?? '';
+        }
+      }, 'Profil actualisé.');
+
   @override
   void dispose() {
     _phone.dispose();
@@ -1044,99 +1095,231 @@ class _CourierProfileState extends State<CourierProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final p = widget.session.profile ?? {};
-    return ListView(padding: const EdgeInsets.all(20), children: [
-      for (final entry in {
-        'Prénom': p['first_name'],
-        'Nom': p['last_name'],
-        'Email': p['email'],
-        'Ville': p['city']?['name'],
-        'Type': _label(p['courier_type']),
-        'Restaurant': p['restaurant']?['name'],
-        'Statut': _label(p['status'])
-      }.entries)
-        ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(entry.key),
-            subtitle: Text('${entry.value ?? 'Non renseigné'}')),
-      TextField(
-          controller: _phone,
-          keyboardType: TextInputType.phone,
-          decoration: const InputDecoration(labelText: 'Téléphone')),
-      if (_message != null) Text(_message!),
-      FilledButton(
-          onPressed: _busy
-              ? null
-              : () => _run(() => widget.session.updatePhone(_phone.text),
-                  'Téléphone enregistré.'),
-          child: const Text('Enregistrer le téléphone')),
-      OutlinedButton.icon(
-          icon: const Icon(Icons.lock_outline),
-          label: const Text('Changer mon mot de passe'),
-          onPressed: _busy
-              ? null
-              : () async {
-                  final changed = await Navigator.of(context).push<bool>(
-                      MaterialPageRoute(
-                          builder: (_) => _ProtectedCourierPage(
-                              session: widget.session,
-                              child: CourierPasswordScreen(
-                                  session: widget.session, mandatory: false))));
-                  if (mounted && changed == true) {
-                    setState(() => _message = 'Mot de passe modifié.');
-                  }
-                }),
-      OutlinedButton(
-          onPressed: _busy ? null : () => _run(widget.session.logout, ''),
-          child: const Text('Se déconnecter')),
-    ]);
+    return RefreshIndicator(
+        onRefresh: _refresh,
+        child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(20),
+            children: [
+              if (_busy) const LinearProgressIndicator(),
+              TextButton.icon(
+                  onPressed: _busy ? null : _refresh,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Actualiser le profil')),
+              for (final entry in {
+                'Prénom': p['first_name'],
+                'Nom': p['last_name'],
+                'Email': p['email'],
+                'Ville': p['city']?['name'],
+                'Type': _label(p['courier_type']),
+                'Restaurant': p['restaurant']?['name'],
+                'Statut': _label(p['status'])
+              }.entries)
+                ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(entry.key),
+                    subtitle: Text('${entry.value ?? 'Non renseigné'}')),
+              TextField(
+                  enabled: !_busy,
+                  controller: _phone,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(labelText: 'Téléphone')),
+              if (_message != null) Text(_message!),
+              FilledButton(
+                  onPressed: _busy
+                      ? null
+                      : () => _run(
+                          () => widget.session.updatePhone(_phone.text),
+                          'Téléphone enregistré.'),
+                  child: const Text('Enregistrer le téléphone')),
+              OutlinedButton.icon(
+                  icon: const Icon(Icons.lock_outline),
+                  label: const Text('Changer mon mot de passe'),
+                  onPressed: _busy
+                      ? null
+                      : () async {
+                          final changed = await Navigator.of(context)
+                              .push<bool>(MaterialPageRoute(
+                                  builder: (_) => _ProtectedCourierPage(
+                                      session: widget.session,
+                                      child: CourierPasswordScreen(
+                                          session: widget.session,
+                                          mandatory: false))));
+                          if (mounted && changed == true) {
+                            setState(() => _message = 'Mot de passe modifié.');
+                          }
+                        }),
+              OutlinedButton(
+                  onPressed:
+                      _busy ? null : () => _run(widget.session.logout, ''),
+                  child: const Text('Se déconnecter')),
+            ]));
   }
 }
 
-class CourierNotificationsScreen extends StatelessWidget {
+Widget _cashBadge(Map order) {
+  final due = num.tryParse('${order['cash_due']}') ?? 0;
+  if (due <= 0) return const SizedBox.shrink();
+  return Container(
+    margin: const EdgeInsets.symmetric(vertical: 6),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    decoration: BoxDecoration(
+        color: const Color(0xFFFFE5CC),
+        borderRadius: BorderRadius.circular(12)),
+    child: Text('Cash à encaisser : ${_money(due)}',
+        style: const TextStyle(
+            color: Color(0xFF873B00), fontWeight: FontWeight.bold)),
+  );
+}
+
+class _CourierNotificationBell extends StatefulWidget {
+  const _CourierNotificationBell({required this.session});
+  final CourierSessionService session;
+  @override
+  State<_CourierNotificationBell> createState() =>
+      _CourierNotificationBellState();
+}
+
+class _CourierNotificationBellState extends State<_CourierNotificationBell> {
+  int _revision = 0;
+  @override
+  Widget build(BuildContext context) => _RemoteData(
+        key: ValueKey(_revision),
+        session: widget.session,
+        path: 'notifications',
+        refreshInterval: const Duration(seconds: 30),
+        loadingBuilder: (_) => _button(0),
+        errorBuilder: (_, __) => _button(0),
+        builder: (_, data, __) =>
+            _button((data['meta']?['unread_count'] as num? ?? 0).toInt()),
+      );
+  Widget _button(int count) => IconButton(
+        tooltip:
+            count > 0 ? 'Notifications : $count non lues' : 'Notifications',
+        icon: Badge(
+            isLabelVisible: count > 0,
+            label: Text('$count'),
+            child: const Icon(Icons.notifications_outlined)),
+        onPressed: () async {
+          await Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => _ProtectedCourierPage(
+                  session: widget.session,
+                  child: CourierNotificationsScreen(session: widget.session))));
+          if (mounted) setState(() => _revision++);
+        },
+      );
+}
+
+class CourierNotificationsScreen extends StatefulWidget {
   const CourierNotificationsScreen({super.key, required this.session});
   final CourierSessionService session;
   @override
+  State<CourierNotificationsScreen> createState() =>
+      _CourierNotificationsState();
+}
+
+class _CourierNotificationsState extends State<CourierNotificationsScreen> {
+  int _page = 1;
+  final Set<Object> _busy = {};
+  @override
   Widget build(BuildContext context) => Scaffold(
-      appBar: AppBar(title: const Text('Notifications livreur')),
-      bottomNavigationBar: _pageMenu(context, session, 0),
-      body: _RemoteData(
-          session: session,
+        appBar: AppBar(title: const Text('Notifications livreur')),
+        bottomNavigationBar: _pageMenu(context, widget.session, 0),
+        body: _RemoteData(
+          key: ValueKey(_page),
+          session: widget.session,
           path: 'notifications',
+          query: {'page': '$_page'},
+          refreshInterval: const Duration(seconds: 30),
           builder: (context, response, reload) {
             final notifications = response['data'] as List? ?? [];
+            final meta = response['meta'] as Map? ?? {};
             return RefreshIndicator(
                 onRefresh: reload,
                 child: ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: [
-                      if (notifications.isEmpty)
-                        const Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Text('Aucune notification.')),
-                      for (final item in notifications)
-                        ListTile(
-                            title: Text('${item['title']}'),
-                            subtitle: Text('${item['body']}'),
-                            onTap: () async {
-                              try {
-                                await session.request(
-                                    'notifications/${item['id']}/read',
-                                    body: {});
-                                NotificationNavigationService.instance
-                                    .handlePayload(Map<String, dynamic>.from(
-                                        item['data'] as Map? ?? {}));
-                              } catch (e) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                          content: Text(
-                                              CourierSessionService.userMessage(
-                                                  e))));
-                                }
-                              }
-                            }),
-                    ]));
-          }));
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: [
+                    Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                            '${meta['unread_count'] ?? 0} notification(s) non lue(s)')),
+                    if (notifications.isEmpty)
+                      const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text('Aucune notification.')),
+                    for (final item in notifications)
+                      ListTile(
+                        tileColor: item['is_read'] == true
+                            ? null
+                            : const Color(0xFFF2EAF8),
+                        leading: Icon(
+                            item['is_read'] == true
+                                ? Icons.drafts_outlined
+                                : Icons.mark_email_unread_outlined,
+                            color: _purple),
+                        title: Text('${item['title']}',
+                            style: TextStyle(
+                                fontWeight: item['is_read'] == true
+                                    ? FontWeight.normal
+                                    : FontWeight.bold)),
+                        subtitle: Text(
+                            '${item['body']}\n${item['is_read'] == true ? 'Lue' : 'Non lue'} · ${_date(item['created_at'])}'),
+                        trailing: item['is_read'] == true
+                            ? null
+                            : IconButton(
+                                tooltip: 'Marquer comme lue',
+                                icon: const Icon(Icons.done),
+                                onPressed: _busy.contains(item['id'])
+                                    ? null
+                                    : () => _read(item, reload)),
+                        onTap: _busy.contains(item['id'])
+                            ? null
+                            : () => _read(item, reload, open: true),
+                      ),
+                    Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          TextButton(
+                              onPressed: _page > 1
+                                  ? () => setState(() => _page--)
+                                  : null,
+                              child: const Text('Précédent')),
+                          Text('Page $_page'),
+                          TextButton(
+                              onPressed:
+                                  _page < (meta['last_page'] as num? ?? 1)
+                                      ? () => setState(() => _page++)
+                                      : null,
+                              child: const Text('Suivant')),
+                        ]),
+                  ],
+                ));
+          },
+        ),
+      );
+  Future<void> _read(Map item, Future<void> Function() reload,
+      {bool open = false}) async {
+    setState(() => _busy.add(item['id']));
+    try {
+      if (item['is_read'] != true) {
+        await widget.session
+            .request('notifications/${item['id']}/read', body: {});
+      }
+      if (!mounted) return;
+      await reload();
+      if (open && mounted) {
+        NotificationNavigationService.instance.handlePayload(
+            Map<String, dynamic>.from(item['data'] as Map? ?? {}));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(CourierSessionService.userMessage(e))));
+      }
+    } finally {
+      if (mounted) setState(() => _busy.remove(item['id']));
+    }
+  }
 }
 
 class _RemoteData extends StatefulWidget {
@@ -1146,10 +1329,14 @@ class _RemoteData extends StatefulWidget {
       required this.path,
       required this.builder,
       this.query,
-      this.refreshInterval});
+      this.refreshInterval,
+      this.loadingBuilder,
+      this.errorBuilder});
   final CourierSessionService session;
   final String path;
   final Duration? refreshInterval;
+  final Widget Function(BuildContext)? loadingBuilder;
+  final Widget Function(BuildContext, String)? errorBuilder;
   final Map<String, String>? query;
   final Widget Function(
       BuildContext, Map<String, dynamic>, Future<void> Function()) builder;
@@ -1171,6 +1358,7 @@ class _RemoteDataState extends State<_RemoteData> {
       _timer = Timer.periodic(widget.refreshInterval!, (_) {
         if (!_loading &&
             widget.session.isReady &&
+            (ModalRoute.of(context)?.isCurrent ?? true) &&
             WidgetsBinding.instance.lifecycleState ==
                 AppLifecycleState.resumed) {
           _load();
@@ -1204,8 +1392,14 @@ class _RemoteDataState extends State<_RemoteData> {
 
   @override
   Widget build(BuildContext context) {
-    if (_error != null) return _ErrorState(_error!, _load);
-    if (_data == null) return const Center(child: CircularProgressIndicator());
+    if (_error != null) {
+      return widget.errorBuilder?.call(context, _error!) ??
+          _ErrorState(_error!, _load);
+    }
+    if (_data == null) {
+      return widget.loadingBuilder?.call(context) ??
+          const Center(child: CircularProgressIndicator());
+    }
     return widget.builder(context, _data!, _load);
   }
 }

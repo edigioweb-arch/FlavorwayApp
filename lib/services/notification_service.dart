@@ -115,7 +115,17 @@ class NotificationService extends ChangeNotifier {
     await _handleAuthChanged(_auth.currentUser);
   }
 
+  int? _courierCredentialRevision;
+  bool? _courierWasReady;
   void _courierSessionChanged() {
+    final courier = CourierSessionService.instance;
+    // Profile refresh is not a new login: keep the notification baseline.
+    if (_courierCredentialRevision == courier.credentialRevision &&
+        _courierWasReady == courier.isReady) {
+      return;
+    }
+    _courierCredentialRevision = courier.credentialRevision;
+    _courierWasReady = courier.isReady;
     _sessionGeneration++;
     _notifications.clear();
     _seenNotificationIds.clear();
