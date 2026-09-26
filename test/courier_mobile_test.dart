@@ -69,6 +69,7 @@ class CourierServer {
         'delivery_fee': 1000,
         'discount_total': 0,
         'total': 11000,
+        'currency': 'XAF',
         'cash_due': payment == 'paid' ? 0 : 11000,
         'courier_actions': status == 'ready'
             ? ['pickup']
@@ -127,6 +128,17 @@ class CourierServer {
         if (path == 'dashboard')
           return json({
             'data': {
+              'cash_by_currency': payment == 'paid'
+                  ? []
+                  : [
+                      {'currency_code': 'XAF', 'amount': 11000}
+                    ],
+              'collections_by_currency':
+                  status == 'delivered' && payment != 'paid'
+                      ? [
+                          {'currency_code': 'XAF', 'amount': 11000}
+                        ]
+                      : [],
               'active_orders': 7,
               'today_orders': 9,
               'completed_deliveries': 321,
@@ -539,14 +551,14 @@ void main() {
                   key: ValueKey(history),
                   session: server.session,
                   history: history)));
-      expect(find.text('Cash à encaisser : 11000 FCFA'), findsOneWidget);
+      expect(find.text('Cash à encaisser : 11 000 XAF'), findsOneWidget);
     }
     server.payment = 'paid';
     await tester
         .widget<RefreshIndicator>(find.byType(RefreshIndicator))
         .onRefresh();
     await tester.pumpAndSettle();
-    expect(find.text('Cash à encaisser : 11000 FCFA'), findsNothing);
+    expect(find.text('Cash à encaisser : 11 000 XAF'), findsNothing);
   });
 
   testWidgets('dashboard shows pending collections and opens server order',
@@ -556,7 +568,7 @@ void main() {
     await mount(tester, CourierGate(session: server.session));
     expect(find.text('Encaissements à confirmer'), findsOneWidget);
     await tester.ensureVisible(find.text('SERVER-51'));
-    expect(find.text('Cash à encaisser : 11000 FCFA'), findsOneWidget);
+    expect(find.text('Cash à encaisser : 11 000 XAF'), findsOneWidget);
     await tester.tap(find.text('SERVER-51'));
     await tester.pumpAndSettle();
     expect(server.calls.any((r) => r.url.path.endsWith('/orders/SERVER-51')),

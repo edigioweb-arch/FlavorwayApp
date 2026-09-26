@@ -253,7 +253,7 @@ class FlavorWayHome extends StatelessWidget {
             child: TextField(
               decoration: InputDecoration(
                 hintText: "Où voulez-vous être livré ?",
-                hintStyle: TextStyle(color: Colors.grey[600]),
+                hintStyle: TextStyle(color: Color(0xFF757575)),
                 prefixIcon: Icon(Icons.location_on, color: Colors.redAccent),
                 border: InputBorder.none,
               ),

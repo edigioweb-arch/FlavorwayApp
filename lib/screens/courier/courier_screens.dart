@@ -1,3 +1,4 @@
+import '../../utils/courier_money.dart';
 import '../support_tickets_screen.dart';
 import '../../services/support_ticket_service.dart';
 import 'dart:async';
@@ -6,8 +7,6 @@ import '../../services/courier_session_service.dart';
 import '../../services/notification_navigation_service.dart';
 
 const _purple = Color(0xFF4B1F5C);
-String _money(dynamic value) =>
-    '${(num.tryParse('$value') ?? 0).toStringAsFixed(0)} FCFA';
 String _label(dynamic value) =>
     const {
       'confirmed': 'Confirmée',
@@ -442,6 +441,7 @@ class _CourierPasswordState extends State<CourierPasswordScreen> {
   final _next = TextEditingController();
   final _confirmation = TextEditingController();
   bool _busy = false;
+  final _hidden = [true, true, true];
   String? _error;
   @override
   void dispose() {
@@ -485,24 +485,56 @@ class _CourierPasswordState extends State<CourierPasswordScreen> {
               : 'Choisissez au moins 12 caractères, avec lettres et chiffres.'),
           TextField(
               controller: _current,
-              obscureText: true,
-              decoration:
-                  const InputDecoration(labelText: 'Mot de passe actuel')),
+              obscureText: _hidden[0],
+              enableSuggestions: false,
+              autocorrect: false,
+              decoration: InputDecoration(
+                  labelText: 'Mot de passe actuel',
+                  suffixIcon: IconButton(
+                      tooltip: _hidden[0]
+                          ? 'Afficher le mot de passe'
+                          : 'Masquer le mot de passe',
+                      onPressed: () => setState(() => _hidden[0] = !_hidden[0]),
+                      icon: Icon(_hidden[0]
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined)))),
           TextField(
               controller: _next,
-              obscureText: true,
-              decoration:
-                  const InputDecoration(labelText: 'Nouveau mot de passe')),
+              obscureText: _hidden[1],
+              enableSuggestions: false,
+              autocorrect: false,
+              decoration: InputDecoration(
+                  labelText: 'Nouveau mot de passe',
+                  suffixIcon: IconButton(
+                      tooltip: _hidden[1]
+                          ? 'Afficher le mot de passe'
+                          : 'Masquer le mot de passe',
+                      onPressed: () => setState(() => _hidden[1] = !_hidden[1]),
+                      icon: Icon(_hidden[1]
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined)))),
           TextField(
               controller: _confirmation,
-              obscureText: true,
-              decoration: const InputDecoration(
-                  labelText: 'Confirmer le mot de passe')),
+              obscureText: _hidden[2],
+              enableSuggestions: false,
+              autocorrect: false,
+              decoration: InputDecoration(
+                  labelText: 'Confirmer le mot de passe',
+                  suffixIcon: IconButton(
+                      tooltip: _hidden[2]
+                          ? 'Afficher le mot de passe'
+                          : 'Masquer le mot de passe',
+                      onPressed: () => setState(() => _hidden[2] = !_hidden[2]),
+                      icon: Icon(_hidden[2]
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined)))),
           if (_error != null)
             Text(_error!, style: const TextStyle(color: Colors.red)),
+          const SizedBox(height: 24),
           FilledButton(
               onPressed: _busy ? null : _save,
               child: Text(_busy ? 'Enregistrement…' : 'Enregistrer')),
+          const SizedBox(height: 12),
           TextButton(
               onPressed: _busy
                   ? null
@@ -695,7 +727,7 @@ class _CourierDashboardData extends StatelessWidget {
                     ),
                     (
                       'Cash à encaisser',
-                      _money(data['cash_due']),
+                      courierCurrencyTotals(data['cash_by_currency']),
                       Icons.payments_outlined,
                       const Color(0xFFFFEFDF),
                       const Color(0xFF99510D)
@@ -732,7 +764,7 @@ class _CourierDashboardData extends StatelessWidget {
                           const Text('Aucun encaissement en attente.'),
                         if ((data['collections_count'] as num? ?? 0) > 0) ...[
                           Text(
-                              '${data['collections_count']} livraison(s) · ${_money(data['collections_due'])}',
+                              '${data['collections_count']} livraison(s) · ${courierCurrencyTotals(data['collections_by_currency'])}',
                               style:
                                   const TextStyle(fontWeight: FontWeight.bold)),
                           for (final order
@@ -805,7 +837,7 @@ class _CourierOrdersState extends State<CourierOrdersScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                                '${order['restaurant']?['name'] ?? ''}\n${_label(order['status'])} · ${_money(order['total'])}'),
+                                '${order['restaurant']?['name'] ?? ''}\n${_label(order['status'])} · ${courierMoney(order['total'], order['currency_code'] ?? order['currency'])}'),
                             _cashBadge(order),
                           ]),
                       trailing: const Icon(Icons.chevron_right),
@@ -1036,7 +1068,12 @@ class _CourierOrderState extends State<CourierOrderScreen> {
                               contentPadding: EdgeInsets.zero,
                               title:
                                   Text('${item['quantity']} × ${item['name']}'),
-                              trailing: Text(_money(item['line_total'])),
+                              trailing: Text(courierMoney(
+                                  item['line_total'],
+                                  item['currency_code'] ??
+                                      item['currency'] ??
+                                      order['currency_code'] ??
+                                      order['currency'])),
                               subtitle: Text((item['options'] as List? ?? [])
                                   .map((o) =>
                                       '${o['option_name']} : ${o['option_value']}')
@@ -1052,7 +1089,10 @@ class _CourierOrderState extends State<CourierOrderScreen> {
                           ListTile(
                               contentPadding: EdgeInsets.zero,
                               title: Text(entry.key),
-                              trailing: Text(_money(entry.value))),
+                              trailing: Text(courierMoney(
+                                  entry.value,
+                                  order['currency_code'] ??
+                                      order['currency']))),
                       ]),
                       _section(
                           'Paiement',
@@ -1189,7 +1229,8 @@ Widget _cashBadge(Map order) {
     decoration: BoxDecoration(
         color: const Color(0xFFFFE5CC),
         borderRadius: BorderRadius.circular(12)),
-    child: Text('Cash à encaisser : ${_money(due)}',
+    child: Text(
+        'Cash à encaisser : ${courierMoney(due, order['currency_code'] ?? order['currency'])}',
         style: const TextStyle(
             color: Color(0xFF873B00), fontWeight: FontWeight.bold)),
   );
