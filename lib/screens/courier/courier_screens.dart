@@ -1,3 +1,5 @@
+import '../support_tickets_screen.dart';
+import '../../services/support_ticket_service.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/courier_session_service.dart';
@@ -539,7 +541,18 @@ class _CourierDashboardState extends State<CourierDashboardScreen> {
               'Historique',
               'Profil livreur'
             ][_tab]),
-            actions: [_CourierNotificationBell(session: widget.session)]),
+            actions: [
+              IconButton(
+                  tooltip: 'Ouvrir un ticket',
+                  icon: const Icon(Icons.support_agent),
+                  onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => SupportTicketsScreen(
+                              service: SupportTicketService(
+                                  courier: widget.session))))),
+              _CourierNotificationBell(session: widget.session)
+            ]),
         body: switch (_tab) {
           0 => _CourierDashboardData(
               session: widget.session,
@@ -879,7 +892,17 @@ class _CourierOrderState extends State<CourierOrderScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
       backgroundColor: const Color(0xFFF8F5FA),
-      appBar: AppBar(title: Text(widget.reference)),
+      appBar: AppBar(title: Text(widget.reference), actions: [
+        IconButton(
+            tooltip: 'Ouvrir un ticket',
+            icon: const Icon(Icons.support_agent),
+            onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => SupportTicketsScreen(
+                        service: SupportTicketService(courier: widget.session),
+                        orderReference: widget.reference))))
+      ]),
       bottomNavigationBar: _pageMenu(context, widget.session, 1, busy: _busy),
       body: _RemoteData(
           session: widget.session,

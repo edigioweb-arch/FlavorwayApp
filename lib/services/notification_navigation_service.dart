@@ -1,3 +1,6 @@
+import '../screens/support_tickets_screen.dart';
+import 'support_ticket_service.dart';
+import 'courier_session_service.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -45,6 +48,21 @@ class NotificationNavigationService {
     final type = (payload['type'] ?? '').toString();
     final route = payload['route'];
     final destination = payload['destination'];
+    if (route == 'support_ticket' &&
+        (destination == 'client' || destination == 'courier')) {
+      final id = int.tryParse('${payload['ticket_id']}');
+      if (id == null || id <= 0) return;
+      final session =
+          destination == 'courier' ? CourierSessionService.instance : null;
+      if (session != null && !session.isReady) {
+        navigator.pushNamed('/courier/login');
+        return;
+      }
+      navigator.push(MaterialPageRoute(
+          builder: (_) => SupportTicketScreen(
+              service: SupportTicketService(courier: session), ticketId: id)));
+      return;
+    }
     if (destination == 'courier') {
       final number = payload['order_number'];
       if (number is String && RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(number)) {

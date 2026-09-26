@@ -7,7 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/user_auth_service.dart';
 import '../services/locale_service.dart';
 import 'addresses_screen.dart';
-import 'chat_screen.dart';
+import 'support_tickets_screen.dart';
 import 'notification_preferences_screen.dart';
 import 'payment_methods_screen.dart';
 import 'edit_profile_screen.dart';
@@ -51,8 +51,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           await UserAuthService.instance.getUserProfile(uid: user.uid);
       final data = snapshot.data() ?? <String, dynamic>{};
       final fullName = _normalizedString(data['fullName']);
-      final firstName =
-          _normalizedString(data['firstName']) ?? _normalizedString(data['prenom']);
+      final firstName = _normalizedString(data['firstName']) ??
+          _normalizedString(data['prenom']);
       final lastName =
           _normalizedString(data['lastName']) ?? _normalizedString(data['nom']);
 
@@ -282,8 +282,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   elevation: 0,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(90),
-                                    side:
-                                        const BorderSide(color: orangeFlavor),
+                                    side: const BorderSide(color: orangeFlavor),
                                   ),
                                 ),
                                 onPressed: () => _showLogoutDialog(context),
@@ -382,16 +381,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 12),
               _supportTile(
                 Icons.chat_bubble_outline,
-                'Écrire au support',
-                'Ouvrir une conversation',
+                'Ouvrir un ticket',
+                'Mes demandes et réponses du Support',
                 () {
                   Navigator.maybePop(context);
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const ChatScreen(
-                        conversationId: 'support_flavorway',
-                      ),
+                      builder: (context) => const SupportTicketsScreen(),
                     ),
                   );
                 },

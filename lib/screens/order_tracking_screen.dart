@@ -1,3 +1,4 @@
+import 'support_tickets_screen.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -115,6 +116,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FB),
       appBar: AppBar(
+        actions: [
+          IconButton(
+              tooltip: 'Ouvrir un ticket',
+              icon: const Icon(Icons.support_agent),
+              onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => SupportTicketsScreen(
+                          orderReference: widget.orderReference))))
+        ],
         backgroundColor: Colors.white,
         elevation: 0,
         title: Text(
